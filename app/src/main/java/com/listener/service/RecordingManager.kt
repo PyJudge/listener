@@ -1,8 +1,11 @@
 package com.listener.service
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.media.MediaRecorder
 import android.os.Build
+import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -18,6 +21,13 @@ class RecordingManager @Inject constructor(
     private var currentFilePath: String? = null
     private var isRecording = false
 
+    fun hasRecordPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+    }
+
     fun getRecordingFile(sourceId: String, chunkIndex: Int): File {
         val dir = File(context.filesDir, "recordings/$sourceId")
         if (!dir.exists()) dir.mkdirs()
@@ -25,8 +35,25 @@ class RecordingManager @Inject constructor(
     }
 
     suspend fun startRecording(sourceId: String, chunkIndex: Int): Boolean {
+        // 권한이 없으면 녹음 시도하지 않음
+        if (!hasRecordPermission()) {
+            return false
+        }
+
         return withContext(Dispatchers.IO) {
             try {
+                // 이전 녹음이 진행 중이면 먼저 정리
+                if (isRecording) {
+                    try {
+                        mediaRecorder?.stop()
+                    } catch (e: Exception) {
+                        // stop() 실패해도 release는 해야 함
+                    }
+                    mediaRecorder?.release()
+                    mediaRecorder = null
+                    isRecording = false
+                }
+
                 val file = getRecordingFile(sourceId, chunkIndex)
                 if (file.exists()) file.delete()
 
@@ -53,6 +80,10 @@ class RecordingManager @Inject constructor(
                 true
             } catch (e: Exception) {
                 e.printStackTrace()
+                // 에러 발생 시에도 정리
+                mediaRecorder?.release()
+                mediaRecorder = null
+                isRecording = false
                 false
             }
         }

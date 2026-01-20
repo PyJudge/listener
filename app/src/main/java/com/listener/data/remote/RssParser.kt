@@ -74,7 +74,7 @@ class RssParser @Inject constructor() {
             ?: throw RssParseException("Empty response body")
     }
 
-    private fun parseXml(xml: String, feedUrl: String): List<PodcastEpisodeEntity> {
+    private fun parseXml(xml: String, feedUrl: String): RssFeedResult {
         val parser = Xml.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(StringReader(xml))
@@ -83,13 +83,27 @@ class RssParser @Inject constructor() {
         var eventType = parser.eventType
         var currentEpisode: EpisodeBuilder? = null
         var insideItem = false
+        var insideChannel = false
         var currentTag = ""
+
+        // Channel level info
+        var channelTitle: String? = null
+        var channelDescription: String? = null
+
+        // Text accumulators for tags that may contain HTML/CDATA
+        val channelDescriptionBuilder = StringBuilder()
+        val episodeDescriptionBuilder = StringBuilder()
+        var collectingChannelDescription = false
+        var collectingEpisodeDescription = false
 
         while (eventType != XmlPullParser.END_DOCUMENT) {
             when (eventType) {
                 XmlPullParser.START_TAG -> {
                     currentTag = parser.name
                     when {
+                        currentTag.equals("channel", ignoreCase = true) -> {
+                            insideChannel = true
+                        }
                         currentTag.equals("item", ignoreCase = true) -> {
                             insideItem = true
                             currentEpisode = EpisodeBuilder()
@@ -100,37 +114,89 @@ class RssParser @Inject constructor() {
                                 currentEpisode?.audioUrl = parser.getAttributeValue(null, "url")
                             }
                         }
+                        // Start collecting description
+                        insideChannel && !insideItem && channelDescription == null &&
+                                (currentTag.equals("description", ignoreCase = true) ||
+                                        currentTag.equals("itunes:summary", ignoreCase = true)) -> {
+                            collectingChannelDescription = true
+                            channelDescriptionBuilder.clear()
+                        }
+                        insideItem && (currentTag.equals("description", ignoreCase = true) ||
+                                currentTag.equals("itunes:summary", ignoreCase = true)) -> {
+                            collectingEpisodeDescription = true
+                            episodeDescriptionBuilder.clear()
+                        }
                     }
                 }
                 XmlPullParser.TEXT -> {
-                    if (insideItem && currentEpisode != null) {
-                        val text = parser.text?.trim() ?: ""
-                        if (text.isNotEmpty()) {
+                    val text = parser.text ?: ""
+
+                    // Accumulate description text (may contain HTML)
+                    if (collectingChannelDescription) {
+                        channelDescriptionBuilder.append(text)
+                    }
+                    if (collectingEpisodeDescription) {
+                        episodeDescriptionBuilder.append(text)
+                    }
+
+                    val trimmedText = text.trim()
+                    if (trimmedText.isNotEmpty()) {
+                        if (insideItem && currentEpisode != null) {
+                            // Episode level
                             when {
                                 currentTag.equals("title", ignoreCase = true) ->
-                                    currentEpisode.title = text
+                                    currentEpisode.title = trimmedText
                                 currentTag.equals("guid", ignoreCase = true) ->
-                                    currentEpisode.guid = text
-                                currentTag.equals("description", ignoreCase = true) ->
-                                    currentEpisode.description = text
+                                    currentEpisode.guid = trimmedText
                                 currentTag.equals("pubDate", ignoreCase = true) ->
-                                    currentEpisode.pubDate = text
+                                    currentEpisode.pubDate = trimmedText
                                 currentTag.equals("itunes:duration", ignoreCase = true) ||
                                 currentTag.equals("duration", ignoreCase = true) ->
-                                    currentEpisode.duration = text
+                                    currentEpisode.duration = trimmedText
+                            }
+                        } else if (insideChannel && !insideItem) {
+                            // Channel level (podcast info)
+                            when {
+                                currentTag.equals("title", ignoreCase = true) && channelTitle == null ->
+                                    channelTitle = trimmedText
                             }
                         }
                     }
                 }
                 XmlPullParser.END_TAG -> {
-                    if (parser.name.equals("item", ignoreCase = true)) {
-                        insideItem = false
-                        currentEpisode?.let { builder ->
-                            builder.toEntity(feedUrl)?.let { entity ->
-                                episodes.add(entity)
+                    val tagName = parser.name
+                    when {
+                        tagName.equals("item", ignoreCase = true) -> {
+                            insideItem = false
+                            currentEpisode?.let { builder ->
+                                builder.toEntity(feedUrl)?.let { entity ->
+                                    episodes.add(entity)
+                                }
                             }
+                            currentEpisode = null
                         }
-                        currentEpisode = null
+                        tagName.equals("channel", ignoreCase = true) -> {
+                            insideChannel = false
+                        }
+                        // Finish collecting description
+                        collectingChannelDescription &&
+                                (tagName.equals("description", ignoreCase = true) ||
+                                        tagName.equals("itunes:summary", ignoreCase = true)) -> {
+                            val desc = stripHtml(channelDescriptionBuilder.toString())
+                            if (desc.isNotBlank()) {
+                                channelDescription = desc
+                            }
+                            collectingChannelDescription = false
+                        }
+                        collectingEpisodeDescription &&
+                                (tagName.equals("description", ignoreCase = true) ||
+                                        tagName.equals("itunes:summary", ignoreCase = true)) -> {
+                            val desc = stripHtml(episodeDescriptionBuilder.toString())
+                            if (desc.isNotBlank() && currentEpisode?.description == null) {
+                                currentEpisode?.description = desc
+                            }
+                            collectingEpisodeDescription = false
+                        }
                     }
                     currentTag = ""
                 }
@@ -138,7 +204,24 @@ class RssParser @Inject constructor() {
             eventType = parser.next()
         }
 
-        return episodes
+        return RssFeedResult(
+            channelTitle = channelTitle,
+            channelDescription = channelDescription?.take(2000),
+            episodes = episodes
+        )
+    }
+
+    private fun stripHtml(html: String): String {
+        return html
+            .replace(Regex("<[^>]*>"), "") // Remove HTML tags
+            .replace(Regex("&nbsp;"), " ")
+            .replace(Regex("&amp;"), "&")
+            .replace(Regex("&lt;"), "<")
+            .replace(Regex("&gt;"), ">")
+            .replace(Regex("&quot;"), "\"")
+            .replace(Regex("&#39;"), "'")
+            .replace(Regex("\\s+"), " ") // Normalize whitespace
+            .trim()
     }
 
     private class EpisodeBuilder {

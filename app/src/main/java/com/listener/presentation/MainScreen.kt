@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.listener.presentation.navigation.ListenerBottomBar
 import com.listener.presentation.navigation.ListenerNavHost
@@ -26,7 +27,14 @@ fun MainScreen(
 ) {
     val navController = rememberNavController()
     val playbackState by playerViewModel.playbackState.collectAsState()
-    val showMiniPlayer = playbackState.isPlaying || playbackState.sourceId.isNotEmpty()
+
+    // FullScreenPlayer 화면에서는 미니 플레이어 숨김
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
+    val isFullScreenPlayer = currentRoute?.startsWith("player/") == true
+
+    val showMiniPlayer = (playbackState.isPlaying || playbackState.sourceId.isNotEmpty())
+        && !isFullScreenPlayer
 
     Scaffold(
         bottomBar = {
@@ -43,7 +51,9 @@ fun MainScreen(
                         onNext = { playerViewModel.nextChunk() },
                         onPrevious = { playerViewModel.previousChunk() },
                         onExpand = {
-                            navController.navigate(Screen.FullScreenPlayer.route)
+                            if (playbackState.sourceId.isNotEmpty()) {
+                                navController.navigate(Screen.FullScreenPlayer.createRoute(playbackState.sourceId))
+                            }
                         }
                     )
                 }
@@ -56,8 +66,8 @@ fun MainScreen(
         ListenerNavHost(
             navController = navController,
             modifier = Modifier.padding(paddingValues),
-            onNavigateToPlayer = {
-                navController.navigate(Screen.FullScreenPlayer.route)
+            onNavigateToPlayer = { sourceId ->
+                navController.navigate(Screen.FullScreenPlayer.createRoute(sourceId))
             }
         )
     }

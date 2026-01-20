@@ -15,6 +15,7 @@ import androidx.navigation.navArgument
 import com.listener.presentation.home.HomeScreen
 import com.listener.presentation.media.MediaFileScreen
 import com.listener.presentation.player.FullScreenPlayerScreen
+import com.listener.presentation.playlist.FolderDetailScreen
 import com.listener.presentation.playlist.PlaylistDetailScreen
 import com.listener.presentation.playlist.PlaylistScreen
 import com.listener.presentation.podcast.PodcastDetailScreen
@@ -67,8 +68,17 @@ fun ListenerNavHost(
 
         composable(Screen.Playlist.route) {
             PlaylistScreen(
-                onNavigateToDetail = { playlistId ->
+                onNavigateToPlaylistDetail = { playlistId ->
                     navController.navigate(Screen.PlaylistDetail.createRoute(playlistId))
+                },
+                onNavigateToFolderDetail = { folderId ->
+                    navController.navigate(Screen.FolderDetail.createRoute(folderId))
+                },
+                onNavigateToPlayer = { sourceId ->
+                    navController.navigate(Screen.FullScreenPlayer.createRoute(sourceId))
+                },
+                onNavigateToTranscription = { sourceId ->
+                    navController.navigate(Screen.Transcription.createRoute(sourceId))
                 }
             )
         }
@@ -80,6 +90,23 @@ fun ListenerNavHost(
             val playlistId = backStackEntry.arguments?.getLong("playlistId") ?: 0L
             PlaylistDetailScreen(
                 playlistId = playlistId,
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToPlayer = { sourceId ->
+                    navController.navigate(Screen.FullScreenPlayer.createRoute(sourceId))
+                },
+                onNavigateToTranscription = { sourceId ->
+                    navController.navigate(Screen.Transcription.createRoute(sourceId))
+                }
+            )
+        }
+
+        composable(
+            route = Screen.FolderDetail.route,
+            arguments = listOf(navArgument("folderId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val folderId = backStackEntry.arguments?.getLong("folderId") ?: 0L
+            FolderDetailScreen(
+                folderId = folderId,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToPlayer = { sourceId ->
                     navController.navigate(Screen.FullScreenPlayer.createRoute(sourceId))

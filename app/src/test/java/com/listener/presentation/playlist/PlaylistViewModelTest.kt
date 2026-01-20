@@ -1,9 +1,14 @@
 package com.listener.presentation.playlist
 
 import app.cash.turbine.test
+import com.listener.data.local.db.dao.FolderDao
+import com.listener.data.local.db.dao.LocalFileDao
 import com.listener.data.local.db.dao.PlaylistDao
+import com.listener.data.local.db.dao.PodcastDao
+import com.listener.data.local.db.dao.TranscriptionDao
 import com.listener.data.local.db.entity.PlaylistEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
+import com.listener.data.local.db.entity.TranscriptionResultEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -28,6 +33,10 @@ class PlaylistViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var playlistDao: PlaylistDao
+    private lateinit var folderDao: FolderDao
+    private lateinit var transcriptionDao: TranscriptionDao
+    private lateinit var podcastDao: PodcastDao
+    private lateinit var localFileDao: LocalFileDao
     private lateinit var viewModel: PlaylistViewModel
 
     private val mockPlaylists = listOf(
@@ -50,11 +59,18 @@ class PlaylistViewModelTest {
         Dispatchers.setMain(testDispatcher)
 
         playlistDao = mock()
+        folderDao = mock()
+        transcriptionDao = mock()
+        podcastDao = mock()
+        localFileDao = mock()
 
         whenever(playlistDao.getAllPlaylists()).thenReturn(flowOf(mockPlaylists))
         whenever(playlistDao.getPlaylistItemsList(any())).thenReturn(emptyList())
         whenever(playlistDao.getPlaylistTotalDuration(any())).thenReturn(0L)
         whenever(playlistDao.getPlaylistProgress(any())).thenReturn(0f)
+
+        whenever(folderDao.getAllFolders()).thenReturn(flowOf(emptyList()))
+        whenever(transcriptionDao.getAllTranscriptions()).thenReturn(flowOf(emptyList()))
     }
 
     @After
@@ -64,7 +80,7 @@ class PlaylistViewModelTest {
 
     @Test
     fun `initial state is loading`() = runTest {
-        viewModel = PlaylistViewModel(playlistDao)
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
 
         viewModel.uiState.test {
             val initialState = awaitItem()
@@ -75,7 +91,7 @@ class PlaylistViewModelTest {
 
     @Test
     fun `loads playlists successfully`() = runTest {
-        viewModel = PlaylistViewModel(playlistDao)
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
@@ -89,34 +105,34 @@ class PlaylistViewModelTest {
     }
 
     @Test
-    fun `showCreateDialog updates state`() = runTest {
-        viewModel = PlaylistViewModel(playlistDao)
+    fun `showCreatePlaylistDialog updates state`() = runTest {
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.showCreateDialog()
+        viewModel.showCreatePlaylistDialog()
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
             val state = awaitItem()
-            assertTrue(state.showCreateDialog)
+            assertTrue(state.showCreatePlaylistDialog)
             cancelAndConsumeRemainingEvents()
         }
     }
 
     @Test
-    fun `dismissCreateDialog updates state`() = runTest {
-        viewModel = PlaylistViewModel(playlistDao)
+    fun `dismissCreatePlaylistDialog updates state`() = runTest {
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.showCreateDialog()
+        viewModel.showCreatePlaylistDialog()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.dismissCreateDialog()
+        viewModel.dismissCreatePlaylistDialog()
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
             val state = awaitItem()
-            assertFalse(state.showCreateDialog)
+            assertFalse(state.showCreatePlaylistDialog)
             cancelAndConsumeRemainingEvents()
         }
     }
@@ -125,10 +141,10 @@ class PlaylistViewModelTest {
     fun `createPlaylist calls dao and dismisses dialog`() = runTest {
         whenever(playlistDao.insertPlaylist(any())).thenReturn(1L)
 
-        viewModel = PlaylistViewModel(playlistDao)
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.showCreateDialog()
+        viewModel.showCreatePlaylistDialog()
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.createPlaylist("New Playlist")
@@ -138,14 +154,14 @@ class PlaylistViewModelTest {
 
         viewModel.uiState.test {
             val state = awaitItem()
-            assertFalse(state.showCreateDialog)
+            assertFalse(state.showCreatePlaylistDialog)
             cancelAndConsumeRemainingEvents()
         }
     }
 
     @Test
     fun `deletePlaylist calls dao`() = runTest {
-        viewModel = PlaylistViewModel(playlistDao)
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.deletePlaylist(mockPlaylists[0])
@@ -165,7 +181,7 @@ class PlaylistViewModelTest {
         whenever(playlistDao.getPlaylistTotalDuration(1L)).thenReturn(3600000L) // 1 hour
         whenever(playlistDao.getPlaylistProgress(1L)).thenReturn(0.5f) // 50%
 
-        viewModel = PlaylistViewModel(playlistDao)
+        viewModel = PlaylistViewModel(playlistDao, folderDao, transcriptionDao, podcastDao, localFileDao)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {

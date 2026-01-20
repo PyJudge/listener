@@ -41,15 +41,24 @@ class PodcastRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshEpisodes(feedUrl: String): Result<List<PodcastEpisodeEntity>> {
-        return rssParser.parseEpisodes(feedUrl).map { episodes ->
+        return rssParser.parseFeed(feedUrl).map { feedResult ->
+            // Update podcast description from RSS channel info
+            feedResult.channelDescription?.let { description ->
+                podcastDao.updateDescription(feedUrl, description)
+            }
+
+            val episodes = feedResult.episodes
             if (episodes.isNotEmpty()) {
                 val existingEpisodes = podcastDao.getEpisodes(feedUrl).first()
-                val existingIds = existingEpisodes.map { it.id }.toSet()
+                val existingEpisodeMap = existingEpisodes.associateBy { it.id }
 
                 val episodesToInsert = episodes.map { episode ->
-                    if (existingIds.contains(episode.id)) {
-                        episode.copy(isNew = false)
+                    val existing = existingEpisodeMap[episode.id]
+                    if (existing != null) {
+                        // Keep existing isNew value (preserve unplayed state)
+                        episode.copy(isNew = existing.isNew)
                     } else {
+                        // New episode - isNew = true by default from parser
                         episode
                     }
                 }

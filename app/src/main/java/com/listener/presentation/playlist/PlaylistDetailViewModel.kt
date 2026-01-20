@@ -7,6 +7,7 @@ import com.listener.data.local.db.dao.LocalFileDao
 import com.listener.data.local.db.dao.PlaylistDao
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
+import com.listener.data.local.db.dao.TranscriptionDao
 import com.listener.data.local.db.entity.PlaylistEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -25,10 +26,21 @@ sealed interface PlaylistDetailUiState {
         val items: List<PlaylistDetailItem>,
         val totalDurationMs: Long,
         val progress: Float,
-        val completedCount: Int
+        val completedCount: Int,
+        val showAddContentDialog: Boolean = false,
+        val availableContent: List<AvailableContentItem> = emptyList()
     ) : PlaylistDetailUiState
     data class Error(val message: String) : PlaylistDetailUiState
 }
+
+data class AvailableContentItem(
+    val sourceId: String,
+    val sourceType: String,
+    val title: String,
+    val subtitle: String,
+    val durationMs: Long?,
+    val isAlreadyAdded: Boolean
+)
 
 data class PlaylistDetailItem(
     val playlistItem: PlaylistItemEntity,
@@ -46,7 +58,8 @@ class PlaylistDetailViewModel @Inject constructor(
     private val playlistDao: PlaylistDao,
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
-    private val recentLearningDao: RecentLearningDao
+    private val recentLearningDao: RecentLearningDao,
+    private val transcriptionDao: TranscriptionDao
 ) : ViewModel() {
 
     val playlistId: Long = checkNotNull(savedStateHandle["playlistId"])
@@ -231,6 +244,108 @@ class PlaylistDetailViewModel @Inject constructor(
             val playlist = playlistDao.getPlaylist(playlistId) ?: return@launch
             playlistDao.deletePlaylist(playlist)
             onDeleted()
+        }
+    }
+
+    fun showAddContentDialog() {
+        viewModelScope.launch {
+            val currentState = _uiState.value
+            if (currentState !is PlaylistDetailUiState.Success) return@launch
+
+            val existingSourceIds = currentState.items.map { it.playlistItem.sourceId }.toSet()
+            val availableContent = loadAvailableContent(existingSourceIds)
+
+            _uiState.update { state ->
+                if (state is PlaylistDetailUiState.Success) {
+                    state.copy(
+                        showAddContentDialog = true,
+                        availableContent = availableContent
+                    )
+                } else state
+            }
+        }
+    }
+
+    fun dismissAddContentDialog() {
+        _uiState.update { state ->
+            if (state is PlaylistDetailUiState.Success) {
+                state.copy(showAddContentDialog = false)
+            } else state
+        }
+    }
+
+    private suspend fun loadAvailableContent(existingSourceIds: Set<String>): List<AvailableContentItem> {
+        val availableItems = mutableListOf<AvailableContentItem>()
+
+        // Get all transcribed content
+        val transcriptions = transcriptionDao.getAllTranscriptionsList()
+
+        for (transcription in transcriptions) {
+            val sourceId = transcription.sourceId
+            val isAlreadyAdded = existingSourceIds.contains(sourceId)
+
+            // Try to get episode info
+            val episode = podcastDao.getEpisode(sourceId)
+            if (episode != null) {
+                val podcast = podcastDao.getSubscription(episode.feedUrl)
+                availableItems.add(
+                    AvailableContentItem(
+                        sourceId = sourceId,
+                        sourceType = "PODCAST_EPISODE",
+                        title = episode.title,
+                        subtitle = podcast?.title ?: "Unknown Podcast",
+                        durationMs = episode.durationMs,
+                        isAlreadyAdded = isAlreadyAdded
+                    )
+                )
+                continue
+            }
+
+            // Try to get local file info
+            val localFile = localFileDao.getFile(sourceId)
+            if (localFile != null) {
+                availableItems.add(
+                    AvailableContentItem(
+                        sourceId = sourceId,
+                        sourceType = "LOCAL_FILE",
+                        title = localFile.displayName,
+                        subtitle = "Local File",
+                        durationMs = localFile.durationMs,
+                        isAlreadyAdded = isAlreadyAdded
+                    )
+                )
+            }
+        }
+
+        return availableItems
+    }
+
+    fun addContentToPlaylist(item: AvailableContentItem) {
+        viewModelScope.launch {
+            val currentState = _uiState.value
+            if (currentState !is PlaylistDetailUiState.Success) return@launch
+
+            val maxOrder = playlistDao.getMaxOrderIndex(playlistId) ?: -1
+            val newItem = PlaylistItemEntity(
+                playlistId = playlistId,
+                sourceId = item.sourceId,
+                sourceType = item.sourceType,
+                orderIndex = maxOrder + 1,
+                addedAt = System.currentTimeMillis()
+            )
+            playlistDao.insertPlaylistItem(newItem)
+
+            // Update available content to mark as added
+            _uiState.update { state ->
+                if (state is PlaylistDetailUiState.Success) {
+                    state.copy(
+                        availableContent = state.availableContent.map {
+                            if (it.sourceId == item.sourceId) it.copy(isAlreadyAdded = true)
+                            else it
+                        }
+                    )
+                } else state
+            }
         }
     }
 }

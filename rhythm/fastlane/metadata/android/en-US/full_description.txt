@@ -1,0 +1,13 @@
+<b>🎵 Rhythm</b> - Your privacy-first music player with Material 3 design.
+
+<b>✨ Highlights:</b>
+• 100% Private: No tracking, no ads, fully offline
+• Lossless Audio: FLAC, ALAC, WAV, MP3, AAC, OGG + gapless playback
+• Beautiful Design: Material 3 with dynamic colors
+• 10-Band Equalizer: 6000+ AutoEQ presets
+• Smart Library: Songs, Albums, Artists, Playlists, Folders
+• Lyrics Editor: View & edit time-synced lyrics
+• All Features: Sleep timer, themes, queue control, M3U import/export
+
+<b>Why Choose Rhythm?</b>
+Open-source, no permissions required for core features. Perfect for audiophiles and privacy enthusiasts. Download updates directly from GitHub.

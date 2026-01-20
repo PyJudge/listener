@@ -22,6 +22,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 import org.mockito.kotlin.any
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.verify
@@ -85,7 +86,7 @@ class HomeViewModelTest {
     )
 
     @Before
-    fun setup() = runTest {
+    fun setup() {
         Dispatchers.setMain(testDispatcher)
 
         recentLearningDao = mock()
@@ -93,10 +94,12 @@ class HomeViewModelTest {
         playlistDao = mock()
 
         whenever(recentLearningDao.getRecentLearnings(any())).thenReturn(flowOf(mockRecentLearnings))
-        whenever(podcastDao.getNewEpisodes(any())).thenReturn(flowOf(mockEpisodes))
+        whenever(podcastDao.getNewEpisodes(any(), any())).thenReturn(flowOf(mockEpisodes))
         whenever(podcastDao.getAllSubscriptions()).thenReturn(flowOf(mockSubscriptions))
         whenever(playlistDao.getAllPlaylists()).thenReturn(flowOf(mockPlaylists))
-        whenever(playlistDao.getPlaylistItemsList(any())).thenReturn(emptyList())
+        runBlocking {
+            whenever(playlistDao.getPlaylistItemsList(any())).thenReturn(emptyList())
+        }
     }
 
     @After

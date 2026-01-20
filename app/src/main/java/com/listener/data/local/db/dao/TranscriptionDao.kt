@@ -36,4 +36,13 @@ interface TranscriptionDao {
 
     @Query("SELECT COUNT(*) FROM chunks WHERE sourceId = :sourceId")
     suspend fun getChunkCount(sourceId: String): Int
+
+    @Query("SELECT * FROM transcription_results ORDER BY createdAt DESC")
+    fun getAllTranscriptions(): Flow<List<TranscriptionResultEntity>>
+
+    @Query("SELECT * FROM transcription_results ORDER BY createdAt DESC")
+    suspend fun getAllTranscriptionsList(): List<TranscriptionResultEntity>
+
+    @Query("SELECT COUNT(*) FROM transcription_results")
+    fun getTranscribedCount(): Flow<Int>
 }

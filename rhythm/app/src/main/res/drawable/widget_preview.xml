@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 16 Legacy Widget Preview - 3x2 Medium Layout -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="120dp"
+    android:viewportWidth="250"
+    android:viewportHeight="120">
+    
+    <!-- Widget background - Android 16 translucent with rounded corners -->
+    <path
+        android:fillColor="#DD1C1B1F"
+        android:pathData="M16,0 L234,0 Q250,0 250,16 L250,104 Q250,120 234,120 L16,120 Q0,120 0,104 L0,16 Q0,0 16,0 Z"/>
+    
+    <!-- Album art placeholder with rounded corners -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M16,16 L88,16 Q100,16 100,28 L100,92 Q100,104 88,104 L16,104 Q12,104 12,100 L12,20 Q12,16 16,16 Z"/>
+    
+    <!-- Music note icon - Android 16 primary -->
+    <path
+        android:fillColor="#9B7DFF"
+        android:pathData="M52,40 L52,72 Q52,80 44,80 Q36,80 36,72 Q36,64 44,64 Q48,64 52,68 L52,40 L68,40 L68,48 L52,48 Z"/>
+    
+    <!-- Song title - high contrast -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M108,32 L228,32 L228,40 L108,40 Z"/>
+    
+    <!-- Artist name - medium emphasis -->
+    <path
+        android:fillColor="#C9C5CA"
+        android:pathData="M108,48 L200,48 L200,55 L108,55 Z"/>
+    
+    <!-- Previous button - rounded with Android 16 style -->
+    <path
+        android:fillColor="#4A3F5C"
+        android:pathData="M140,78 Q156,78 156,90 Q156,102 140,102 Q124,102 124,90 Q124,78 140,78 Z"/>
+    <!-- Rounded skip previous icon -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M146.5,85.5 L139,90 L146.5,94.5 Q147.5,95 147.5,94 L147.5,86 Q147.5,85 146.5,85.5 Z M136,86 Q135,86 135,87 L135,93 Q135,94 136,94 Q137,94 137,93 L137,87 Q137,86 136,86 Z"/>
+    
+    <!-- Play button - vibrant primary Android 16 -->
+    <path
+        android:fillColor="#9B7DFF"
+        android:pathData="M180,75 Q198,75 198,90 Q198,105 180,105 Q162,105 162,90 Q162,75 180,75 Z"/>
+    <!-- Rounded play icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M176,83 Q175.5,82.5 176,82 L185,88 Q186,89 185,90 L176,96 Q175.5,96.5 175.5,96 L175.5,83.5 Q175.5,83 176,83 Z"/>
+    
+    <!-- Next button - rounded with Android 16 style -->
+    <path
+        android:fillColor="#4A3F5C"
+        android:pathData="M220,78 Q236,78 236,90 Q236,102 220,102 Q204,102 204,90 Q204,78 220,78 Z"/>
+    <!-- Rounded skip next icon -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M213.5,85.5 L221,90 L213.5,94.5 Q212.5,95 212.5,94 L212.5,86 Q212.5,85 213.5,85.5 Z M224,86 Q223,86 223,87 L223,93 Q223,94 224,94 Q225,94 225,93 L225,87 Q225,86 224,86 Z"/>
+</vector>

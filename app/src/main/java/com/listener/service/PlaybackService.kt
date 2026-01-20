@@ -43,6 +43,18 @@ class PlaybackService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private val serviceScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
 
+    // Binder for local service binding
+    private val binder = LocalBinder()
+
+    inner class LocalBinder : android.os.Binder() {
+        fun getService(): PlaybackService = this@PlaybackService
+    }
+
+    override fun onBind(intent: android.content.Intent?): android.os.IBinder {
+        super.onBind(intent)
+        return binder
+    }
+
     private var chunks: List<Chunk> = emptyList()
     private var currentChunkIndex = 0
     private var sourceId = ""
@@ -68,7 +80,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     companion object {
-        private const val POSITION_CHECK_INTERVAL_MS = 100L
+        private const val POSITION_CHECK_INTERVAL_MS = 30L
         const val CHANNEL_ID = "listener_playback"
         const val NOTIFICATION_ID = 1
     }
@@ -159,12 +171,13 @@ class PlaybackService : MediaSessionService() {
     fun nextChunk() {
         if (currentChunkIndex < chunks.size - 1) {
             currentChunkIndex++
+            val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
             stateMachine.play()
             playCurrentChunk()
             updatePlaybackState {
                 copy(
-                    currentChunkIndex = currentChunkIndex,
+                    currentChunkIndex = newIndex,
                     learningState = stateMachine.state.value
                 )
             }
@@ -174,12 +187,13 @@ class PlaybackService : MediaSessionService() {
     fun previousChunk() {
         if (currentChunkIndex > 0) {
             currentChunkIndex--
+            val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
             stateMachine.play()
             playCurrentChunk()
             updatePlaybackState {
                 copy(
-                    currentChunkIndex = currentChunkIndex,
+                    currentChunkIndex = newIndex,
                     learningState = stateMachine.state.value
                 )
             }
@@ -189,12 +203,13 @@ class PlaybackService : MediaSessionService() {
     fun seekToChunk(index: Int) {
         if (index in chunks.indices) {
             currentChunkIndex = index
+            val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
             stateMachine.play()
             playCurrentChunk()
             updatePlaybackState {
                 copy(
-                    currentChunkIndex = currentChunkIndex,
+                    currentChunkIndex = newIndex,
                     learningState = stateMachine.state.value
                 )
             }
@@ -232,9 +247,10 @@ class PlaybackService : MediaSessionService() {
             is TransitionResult.NextChunk -> {
                 if (currentChunkIndex < chunks.size - 1) {
                     currentChunkIndex++
+                    val newIndex = currentChunkIndex  // 로컬 변수로 캡처
                     stateMachine.play()
                     playCurrentChunk()
-                    updatePlaybackState { copy(currentChunkIndex = currentChunkIndex) }
+                    updatePlaybackState { copy(currentChunkIndex = newIndex) }
                 } else {
                     // End of content
                     stateMachine.stop()
@@ -260,7 +276,7 @@ class PlaybackService : MediaSessionService() {
 
     private fun startGapTimer() {
         val chunk = chunks.getOrNull(currentChunkIndex) ?: return
-        val gapDuration = (chunk.durationMs * stateMachine.getSettings().gapRatio).toLong()
+        val gapDuration = (chunk.durationMs * (1 + stateMachine.getSettings().gapRatio)).toLong()
 
         gapJob = serviceScope.launch {
             delay(gapDuration)
@@ -270,12 +286,22 @@ class PlaybackService : MediaSessionService() {
 
     private fun startRecordingWithGap() {
         val chunk = chunks.getOrNull(currentChunkIndex) ?: return
-        val gapDuration = (chunk.durationMs * stateMachine.getSettings().gapRatio).toLong()
+        val gapDuration = (chunk.durationMs * (1 + stateMachine.getSettings().gapRatio)).toLong()
+
+        // ExoPlayer 일시정지 (오디오 포커스 해제)
+        player?.pause()
 
         serviceScope.launch {
-            recordingManager.startRecording(sourceId, currentChunkIndex)
+            val success = recordingManager.startRecording(sourceId, currentChunkIndex)
+            if (!success) {
+                // 녹음 실패 시 (권한 없음 등) Gap으로 전환하여 정상 진행
+                stateMachine.onRecordingFailed()
+                updatePlaybackState { copy(learningState = stateMachine.state.value) }
+            }
             delay(gapDuration)
-            recordingManager.stopRecording()
+            if (success) {
+                recordingManager.stopRecording()
+            }
             onChunkPlaybackComplete()
         }
     }

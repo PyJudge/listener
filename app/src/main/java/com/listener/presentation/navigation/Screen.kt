@@ -39,6 +39,10 @@ sealed class Screen(
         fun createRoute(playlistId: Long) = "playlist/$playlistId"
     }
 
+    data object FolderDetail : Screen(route = "folder/{folderId}") {
+        fun createRoute(folderId: Long) = "folder/$folderId"
+    }
+
     data object Podcast : Screen(
         route = "podcast",
         title = "Podcast",

@@ -11,5 +11,6 @@ data class SubscribedPodcastEntity(
     val description: String?,
     val artworkUrl: String?,
     val lastCheckedAt: Long,
-    val addedAt: Long
+    val addedAt: Long,
+    val orderIndex: Int = 0
 )

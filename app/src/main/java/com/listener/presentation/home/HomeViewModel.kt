@@ -34,6 +34,12 @@ class HomeViewModel @Inject constructor(
     private val playlistDao: PlaylistDao
 ) : ViewModel() {
 
+    fun markEpisodeAsPlayed(episodeId: String) {
+        viewModelScope.launch {
+            podcastDao.markAsRead(episodeId)
+        }
+    }
+
     private val _uiState = MutableStateFlow(HomeUiState(isLoading = true))
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
@@ -50,8 +56,9 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            // Observe new episodes
-            podcastDao.getNewEpisodes(10).collect { episodes ->
+            // Observe new episodes (within 3 days, unplayed)
+            val threeDaysAgo = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
+            podcastDao.getNewEpisodes(threeDaysAgo, 10).collect { episodes ->
                 _uiState.update { it.copy(newEpisodes = episodes, isLoading = false) }
             }
         }

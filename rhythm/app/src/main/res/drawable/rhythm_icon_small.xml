@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    
+    <!-- Small version background -->
+    <path
+        android:pathData="M24,24m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="radial"
+                android:centerX="24"
+                android:centerY="24"
+                android:gradientRadius="22"
+                android:startColor="#7C4DFF"
+                android:endColor="#3700B3" />
+        </aapt:attr>
+    </path>
+    
+    <!-- Headphone Arc (Scaled down) -->
+    <path
+        android:pathData="M15,21C15,15 18.5,12 24,12C29.5,12 33,15 33,21"
+        android:strokeColor="#F2FFFFFF"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+    
+    <!-- Left Ear Cup -->
+    <path
+        android:pathData="M13,19C11,19 10,20 10,21.5L10,26.5C10,28 11,29 13,29C15,29 16,28 16,26.5L16,21.5C16,20 15,19 13,19Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Right Ear Cup -->
+    <path
+        android:pathData="M35,19C33,19 32,20 32,21.5L32,26.5C32,28 33,29 35,29C37,29 38,28 38,26.5L38,21.5C38,20 37,19 35,19Z"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Central Play Button -->
+    <path
+        android:pathData="M24,24m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0"
+        android:fillColor="#FFFFFF" />
+    
+    <!-- Play Triangle -->
+    <path
+        android:pathData="M21,20C21,19 21.5,18.5 22.5,19L29,22.5C30,23 30,25 29,25.5L22.5,29C21.5,29.5 21,29 21,28Z"
+        android:fillColor="#7C4DFF" />
+
+</vector>

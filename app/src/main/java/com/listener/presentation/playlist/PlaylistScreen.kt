@@ -6,8 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -16,7 +16,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AudioFile
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,19 +40,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.listener.data.local.db.entity.PlaylistEntity
-import com.listener.presentation.components.EmptyState
 import com.listener.presentation.components.LoadingState
-import com.listener.presentation.theme.ListenerTheme
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PlaylistScreen(
-    onNavigateToDetail: (Long) -> Unit = {},
+    onNavigateToPlaylistDetail: (Long) -> Unit = {},
+    onNavigateToFolderDetail: (Long) -> Unit = {},
+    onNavigateToPlayer: (String) -> Unit = {},
+    onNavigateToTranscription: (String) -> Unit = {},
     viewModel: PlaylistViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -62,7 +69,7 @@ fun PlaylistScreen(
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { viewModel.showCreateDialog() },
+                onClick = { viewModel.showCreatePlaylistDialog() },
                 containerColor = MaterialTheme.colorScheme.primary
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Create playlist")
@@ -70,31 +77,72 @@ fun PlaylistScreen(
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
-            when {
-                uiState.isLoading -> {
-                    LoadingState()
-                }
-                uiState.playlists.isEmpty() -> {
-                    EmptyState(
-                        icon = Icons.AutoMirrored.Outlined.QueueMusic,
-                        title = "No Playlists",
-                        description = "Create a playlist to organize your learning content",
-                        actionLabel = "Create Playlist",
-                        onAction = { viewModel.showCreateDialog() }
-                    )
-                }
-                else -> {
-                    LazyColumn(
-                        contentPadding = PaddingValues(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+            if (uiState.isLoading) {
+                LoadingState()
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Transcribed Section Header
+                    item {
+                        Text(
+                            text = "Transcribed",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Transcribed Items (as cards like PlaylistItem)
+                    if (uiState.transcribedItems.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No transcribed content yet",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    } else {
+                        items(
+                            items = uiState.transcribedItems,
+                            key = { "transcribed_${it.sourceId}" }
+                        ) { item ->
+                            TranscribedItem(
+                                item = item,
+                                onClick = { onNavigateToPlayer(item.sourceId) }
+                            )
+                        }
+                    }
+
+                    // Custom Playlist Section Header
+                    item {
+                        Text(
+                            text = "Custom Playlist",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+
+                    // Playlists
+                    if (uiState.playlists.isEmpty()) {
+                        item {
+                            Text(
+                                text = "No playlists yet. Tap + to create one.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(vertical = 8.dp)
+                            )
+                        }
+                    } else {
                         items(
                             items = uiState.playlists,
-                            key = { it.playlist.id }
+                            key = { "playlist_${it.playlist.id}" }
                         ) { playlistWithProgress ->
                             PlaylistItem(
                                 playlistWithProgress = playlistWithProgress,
-                                onClick = { onNavigateToDetail(playlistWithProgress.playlist.id) },
+                                onClick = { onNavigateToPlaylistDetail(playlistWithProgress.playlist.id) },
                                 onDelete = { playlistToDelete = playlistWithProgress.playlist }
                             )
                         }
@@ -105,14 +153,16 @@ fun PlaylistScreen(
     }
 
     // Create Playlist Dialog
-    if (uiState.showCreateDialog) {
-        CreatePlaylistDialog(
+    if (uiState.showCreatePlaylistDialog) {
+        CreateDialog(
+            title = "New Playlist",
+            label = "Playlist name",
             onConfirm = { viewModel.createPlaylist(it) },
-            onDismiss = { viewModel.dismissCreateDialog() }
+            onDismiss = { viewModel.dismissCreatePlaylistDialog() }
         )
     }
 
-    // Delete Confirmation Dialog
+    // Delete Playlist Confirmation
     playlistToDelete?.let { playlist ->
         AlertDialog(
             onDismissRequest = { playlistToDelete = null },
@@ -137,6 +187,68 @@ fun PlaylistScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun TranscribedItem(
+    item: TranscribedContentItem,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (item.thumbnailUrl != null) {
+                AsyncImage(
+                    model = item.thumbnailUrl,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(MaterialTheme.shapes.small),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = if (item.sourceType == "PODCAST_EPISODE") Icons.Default.Podcasts else Icons.Default.AudioFile,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (item.durationMs != null) {
+                    val minutes = item.durationMs / 60000
+                    Text(
+                        text = "${minutes} min",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -180,7 +292,7 @@ private fun PlaylistItem(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 if (playlistWithProgress.progress > 0) {
-                    Spacer(modifier = Modifier.padding(top = 4.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { playlistWithProgress.progress },
                         modifier = Modifier.fillMaxWidth()
@@ -200,7 +312,9 @@ private fun PlaylistItem(
 }
 
 @Composable
-private fun CreatePlaylistDialog(
+private fun CreateDialog(
+    title: String,
+    label: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -208,12 +322,12 @@ private fun CreatePlaylistDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New Playlist") },
+        title = { Text(title) },
         text = {
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Playlist name") },
+                label = { Text(label) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -232,12 +346,4 @@ private fun CreatePlaylistDialog(
             }
         }
     )
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun PlaylistScreenPreview() {
-    ListenerTheme {
-        // Preview without ViewModel
-    }
 }

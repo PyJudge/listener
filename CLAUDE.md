@@ -77,6 +77,30 @@ adb exec-out screencap -p > screenshot.png
 
 ---
 
+## 에뮬레이터 배포 규칙
+
+**중요: 코드 변경 후 항상 에뮬레이터에 배포하여 검증할 것**
+
+```bash
+# 빌드 + 설치 + 실행 (한 줄)
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" && ./gradlew installDebug && adb shell am start -n com.listener/.MainActivity
+
+# 에뮬레이터 확인
+adb devices
+
+# 에뮬레이터 부팅 (필요시)
+emulator -avd Pixel_8_API_35 &
+```
+
+### 배포 체크리스트
+1. `./gradlew assembleDebug` 빌드 성공 확인
+2. `./gradlew installDebug` 에뮬레이터에 설치
+3. `adb shell am start -n com.listener/.MainActivity` 앱 실행
+4. 변경사항 수동 테스트
+5. 필요시 스크린샷 캡처: `adb exec-out screencap -p > screenshot.png`
+
+---
+
 ## 테스트 구조
 
 ### Unit Tests (`src/test/`)

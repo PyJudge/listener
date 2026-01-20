@@ -16,58 +16,61 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
+// Light Color Scheme (보라색 테마)
 private val LightColorScheme = lightColorScheme(
-    primary = Primary,
-    onPrimary = OnPrimary,
-    primaryContainer = PrimaryLight,
-    onPrimaryContainer = Color.White,
-    secondary = Secondary,
-    onSecondary = OnSecondary,
-    secondaryContainer = SecondaryLight,
-    onSecondaryContainer = Color.White,
+    primary = PurplePrimary,
+    onPrimary = Color.White,
+    primaryContainer = PurpleLight,
+    onPrimaryContainer = PurpleDeep,
+    secondary = PurpleLight,
+    onSecondary = PurpleDeep,
+    secondaryContainer = PurpleAlpha,
+    onSecondaryContainer = PurplePrimary,
+    tertiary = PurpleDark,
+    onTertiary = Color.White,
     background = Background,
-    onBackground = TextPrimary,
+    onBackground = TextPrimaryLegacy,
     surface = Surface,
-    onSurface = TextPrimary,
+    onSurface = TextPrimaryLegacy,
     surfaceVariant = Color(0xFFF5F5F5),
-    onSurfaceVariant = TextSecondary,
-    error = Error,
+    onSurfaceVariant = TextSecondaryLegacy,
+    error = ErrorRed,
     onError = Color.White
 )
 
+// Dark Color Scheme (보라색 테마)
 private val DarkColorScheme = darkColorScheme(
-    primary = PrimaryLight,
-    onPrimary = Color.Black,
-    primaryContainer = Primary,
-    onPrimaryContainer = Color.White,
-    secondary = SecondaryLight,
-    onSecondary = Color.Black,
-    secondaryContainer = Secondary,
-    onSecondaryContainer = Color.White,
-    background = BackgroundDark,
-    onBackground = TextPrimaryDark,
-    surface = SurfaceDark,
-    onSurface = TextPrimaryDark,
-    surfaceVariant = Color(0xFF2C2C2C),
-    onSurfaceVariant = TextSecondaryDark,
-    error = Error,
-    onError = Color.White
+    primary = PurplePrimary,
+    onPrimary = Color.White,
+    primaryContainer = PurpleDark,
+    onPrimaryContainer = PurpleLight,
+    secondary = PurpleLight,
+    onSecondary = PurpleDeep,
+    secondaryContainer = SurfaceElevated,
+    onSecondaryContainer = PurpleLight,
+    tertiary = PurpleDark,
+    onTertiary = Color.White,
+    background = SurfaceDark,
+    onBackground = TextPrimary,
+    surface = SurfaceContainer,
+    onSurface = TextPrimary,
+    surfaceVariant = SurfaceElevated,
+    onSurfaceVariant = TextSecondary,
+    error = ErrorRed,
+    onError = Color.White,
+    inverseSurface = Color.White,
+    inverseOnSurface = SurfaceDark,
+    inversePrimary = PurpleDeep
 )
 
 @Composable
 fun ListenerTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = true,  // 항상 다크 테마 사용
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    // 항상 다크 테마 강제 적용
+    val colorScheme = DarkColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -75,13 +78,38 @@ fun ListenerTheme(
             val window = (view.context as Activity).window
             @Suppress("DEPRECATION")
             window.statusBarColor = colorScheme.background.toArgb()
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false  // 다크 테마용
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        typography = ListenerTypography,
+        content = content
+    )
+}
+
+// Player-specific theme wrapper (항상 다크 테마)
+@Composable
+fun PlayerTheme(
+    content: @Composable () -> Unit
+) {
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            @Suppress("DEPRECATION")
+            window.statusBarColor = PlayerBackground.toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+        }
+    }
+
+    MaterialTheme(
+        colorScheme = DarkColorScheme.copy(
+            background = PlayerBackground,
+            surface = PlayerSurface
+        ),
+        typography = ListenerTypography,
         content = content
     )
 }

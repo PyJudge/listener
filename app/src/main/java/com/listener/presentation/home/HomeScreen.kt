@@ -163,6 +163,7 @@ fun HomeScreen(
             pubDate = episode.pubDate,
             onDismiss = { selectedEpisode = null },
             onStartLearning = {
+                viewModel.markEpisodeAsPlayed(episode.id)
                 selectedEpisode = null
                 onNavigateToTranscription(episode.id)
             },

@@ -54,7 +54,7 @@ class SettingsRepository @Inject constructor(
                 transcriptionLanguage = prefs[Keys.TRANSCRIPTION_LANGUAGE] ?: "en",
                 minChunkMs = prefs[Keys.MIN_CHUNK_MS] ?: 1200L,
                 sentenceOnly = prefs[Keys.SENTENCE_ONLY] ?: true,
-                openAiApiKey = prefs[Keys.OPENAI_API_KEY] ?: ""
+                openAiApiKey = prefs[Keys.OPENAI_API_KEY] ?: AppSettings().openAiApiKey
             )
         }
 

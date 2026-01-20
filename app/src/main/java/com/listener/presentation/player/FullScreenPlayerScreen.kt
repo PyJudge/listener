@@ -3,13 +3,15 @@ package com.listener.presentation.player
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,59 +32,75 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
-import androidx.compose.material.icons.filled.FastForward
-import androidx.compose.material.icons.filled.FastRewind
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Repeat
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Repeat
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
-import com.listener.domain.model.PlaybackState
-import com.listener.presentation.theme.ChunkHighlight
-import com.listener.presentation.theme.ChunkHighlightAlpha
-import com.listener.presentation.theme.Error
+import com.listener.presentation.theme.ErrorRed
 import com.listener.presentation.theme.ListenerTheme
 import com.listener.presentation.theme.PlayerBackground
-import kotlinx.coroutines.launch
+import com.listener.presentation.theme.PlayerTypography
+import com.listener.presentation.theme.PurpleAlpha
+import com.listener.presentation.theme.PurplePrimary
+import com.listener.presentation.theme.SurfaceContainer
+import com.listener.presentation.theme.SurfaceDark
+import com.listener.presentation.theme.SurfaceElevated
+import com.listener.presentation.theme.TextMuted
+import com.listener.presentation.theme.TextPrimary
+import com.listener.presentation.theme.TextSecondary
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
+// 색상 별칭 (테마 색상 사용)
+private val AccentColor = PurplePrimary
+private val AccentColorDim = PurpleAlpha
+private val SurfaceLight = SurfaceElevated
+private val SurfaceDarkBg = SurfaceDark
+
 @Composable
 fun FullScreenPlayerScreen(
     sourceId: String = "",
@@ -94,38 +113,35 @@ fun FullScreenPlayerScreen(
     val playlistItems by viewModel.playlistItems.collectAsStateWithLifecycle()
     val currentPlaylistItemIndex by viewModel.currentPlaylistItemIndex.collectAsStateWithLifecycle()
 
-    // Load content when sourceId changes
     LaunchedEffect(sourceId) {
-        if (sourceId.isNotEmpty() && playbackState.sourceId != sourceId) {
+        if (sourceId.isNotEmpty()) {
             viewModel.loadBySourceId(sourceId)
         }
     }
 
     var isBlindMode by remember { mutableStateOf(false) }
-    var revealedChunks by remember { mutableStateOf(setOf<Int>()) }
+    var peekingChunkIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
     // Auto-scroll to current chunk
     LaunchedEffect(playbackState.currentChunkIndex) {
         if (chunks.isNotEmpty() && playbackState.currentChunkIndex >= 0) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(
-                    index = maxOf(0, playbackState.currentChunkIndex - 1)
-                )
-            }
+            val layoutInfo = listState.layoutInfo
+            val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+            val targetOffset = -(viewportHeight / 3)
+            listState.animateScrollToItem(
+                index = playbackState.currentChunkIndex,
+                scrollOffset = targetOffset
+            )
         }
     }
 
-    // Reset revealed chunks when blind mode changes or chunk changes
     LaunchedEffect(isBlindMode, playbackState.currentChunkIndex) {
-        if (isBlindMode) {
-            revealedChunks = setOf()
-        }
+        peekingChunkIndex = null
     }
 
     Scaffold(
-        containerColor = PlayerBackground
+        containerColor = SurfaceDarkBg
     ) { padding ->
         Column(
             modifier = Modifier
@@ -133,10 +149,11 @@ fun FullScreenPlayerScreen(
                 .padding(padding)
         ) {
             // Header
-            PlayerHeader(
+            ModernHeader(
                 title = playbackState.title,
                 subtitle = playbackState.subtitle,
-                chunkProgress = "${playbackState.currentChunkIndex + 1} / ${playbackState.totalChunks}",
+                currentChunk = playbackState.currentChunkIndex + 1,
+                totalChunks = playbackState.totalChunks,
                 isBlindMode = isBlindMode,
                 onBlindModeToggle = { isBlindMode = !isBlindMode },
                 onNavigateBack = onNavigateBack
@@ -150,8 +167,8 @@ fun FullScreenPlayerScreen(
             ) {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
@@ -167,14 +184,16 @@ fun FullScreenPlayerScreen(
                         items = chunks,
                         key = { _, chunk -> chunk.orderIndex }
                     ) { index, chunk ->
-                        ChunkItem(
+                        ModernChunkItem(
                             chunk = chunk,
+                            index = index + 1,
                             isCurrent = index == playbackState.currentChunkIndex,
                             isBlindMode = isBlindMode,
-                            isRevealed = revealedChunks.contains(index),
+                            isPeeking = peekingChunkIndex == index,
                             hasRecording = viewModel.hasRecording(index),
                             onTap = { viewModel.seekToChunk(index) },
-                            onReveal = { revealedChunks = revealedChunks + index },
+                            onPeekStart = { peekingChunkIndex = index },
+                            onPeekEnd = { peekingChunkIndex = null },
                             onPlayRecording = { viewModel.playRecording(index) }
                         )
                     }
@@ -184,37 +203,43 @@ fun FullScreenPlayerScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp)
+                        .height(60.dp)
                         .align(Alignment.TopCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(PlayerBackground, Color.Transparent)
+                                colors = listOf(SurfaceDarkBg, Color.Transparent)
                             )
                         )
                 )
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(40.dp)
+                        .height(60.dp)
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, PlayerBackground)
+                                colors = listOf(Color.Transparent, SurfaceDarkBg)
                             )
                         )
                 )
             }
 
-            // State indicator
-            LearningStateIndicator(
-                state = playbackState.learningState,
-                modifier = Modifier.padding(horizontal = 20.dp)
+            // Modern Seek Bar
+            ModernSeekBar(
+                currentIndex = playbackState.currentChunkIndex,
+                totalCount = playbackState.totalChunks,
+                onSeek = { viewModel.seekToChunk(it) },
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            // State indicator
+            ModernStateIndicator(
+                state = playbackState.learningState,
+                modifier = Modifier.padding(vertical = 8.dp)
+            )
 
             // Controls
-            PlayerControls(
+            ModernControls(
                 isPlaying = playbackState.isPlaying,
                 hasPlaylist = playlistId != null,
                 hasPreviousItem = currentPlaylistItemIndex > 0,
@@ -229,7 +254,7 @@ fun FullScreenPlayerScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             // Settings bar
-            LearningSettingsBar(
+            ModernSettingsBar(
                 settings = playbackState.settings,
                 onRepeatChange = { viewModel.setRepeatCount(it) },
                 onGapRatioChange = { viewModel.setGapRatio(it) },
@@ -243,124 +268,173 @@ fun FullScreenPlayerScreen(
 }
 
 @Composable
-private fun PlayerHeader(
+private fun ModernHeader(
     title: String,
     subtitle: String,
-    chunkProgress: String,
+    currentChunk: Int,
+    totalChunks: Int,
     isBlindMode: Boolean,
     onBlindModeToggle: () -> Unit,
     onNavigateBack: () -> Unit
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
-        IconButton(onClick = onNavigateBack) {
-            Icon(
-                Icons.Default.KeyboardArrowDown,
-                contentDescription = "Minimize",
-                tint = Color.White
-            )
-        }
-
-        Column(
-            modifier = Modifier.weight(1f),
-            horizontalAlignment = Alignment.CenterHorizontally
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = title.ifEmpty { "No content" },
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = subtitle.ifEmpty { "Select something to play" },
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.7f),
-                maxLines = 1
-            )
+            IconButton(onClick = onNavigateBack) {
+                Icon(
+                    Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = "Close",
+                    tint = TextSecondary,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            // Chunk counter pill
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(SurfaceLight)
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = "$currentChunk / $totalChunks",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            IconButton(onClick = onBlindModeToggle) {
+                Icon(
+                    imageVector = if (isBlindMode) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = "Toggle blind mode",
+                    tint = if (isBlindMode) AccentColor else TextSecondary,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
 
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Title
         Text(
-            text = chunkProgress,
-            style = MaterialTheme.typography.labelMedium,
-            color = Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.padding(end = 8.dp)
+            text = title.ifEmpty { "No content" },
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp)
         )
 
-        IconButton(onClick = onBlindModeToggle) {
-            Icon(
-                imageVector = if (isBlindMode) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                contentDescription = "Toggle blind mode",
-                tint = if (isBlindMode) ChunkHighlight else Color.White.copy(alpha = 0.7f)
-            )
-        }
+        // Subtitle
+        Text(
+            text = subtitle.ifEmpty { "Select something to play" },
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Normal,
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 
 @Composable
-private fun ChunkItem(
+private fun ModernChunkItem(
     chunk: Chunk,
+    index: Int,
     isCurrent: Boolean,
     isBlindMode: Boolean,
-    isRevealed: Boolean,
+    isPeeking: Boolean,
     hasRecording: Boolean,
     onTap: () -> Unit,
-    onReveal: () -> Unit,
+    onPeekStart: () -> Unit,
+    onPeekEnd: () -> Unit,
     onPlayRecording: () -> Unit
 ) {
+    val scale by animateFloatAsState(
+        targetValue = if (isCurrent) 1f else 0.97f,
+        animationSpec = tween(200),
+        label = "scale"
+    )
+
+    val alpha by animateFloatAsState(
+        targetValue = if (isCurrent) 1f else 0.6f,
+        animationSpec = tween(200),
+        label = "alpha"
+    )
+
     val backgroundColor by animateColorAsState(
-        targetValue = when {
-            isCurrent -> ChunkHighlightAlpha
-            else -> Color.Transparent
-        },
+        targetValue = if (isCurrent) SurfaceLight else Color.Transparent,
         animationSpec = tween(200),
         label = "bg"
     )
 
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isCurrent -> ChunkHighlight
-            else -> Color.White.copy(alpha = 0.1f)
-        },
-        animationSpec = tween(200),
-        label = "border"
-    )
-
-    Surface(
-        onClick = onTap,
-        shape = RoundedCornerShape(12.dp),
-        color = backgroundColor,
-        border = BorderStroke(
-            width = if (isCurrent) 2.dp else 1.dp,
-            color = borderColor
-        ),
-        modifier = Modifier.fillMaxWidth()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .alpha(alpha)
+            .clip(RoundedCornerShape(16.dp))
+            .background(backgroundColor)
+            .clickable(onClick = onTap)
+            .padding(16.dp)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Index indicator
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(if (isCurrent) AccentColor else TextMuted.copy(alpha = 0.3f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "$index",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isCurrent) Color.White else TextMuted
+                )
+            }
+
+            // Content
             Column(modifier = Modifier.weight(1f)) {
-                if (isBlindMode && !isRevealed) {
-                    // Show time range only
+                if (isBlindMode && !isPeeking) {
                     Text(
                         text = formatTimeRange(chunk.startMs, chunk.endMs),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color.White.copy(alpha = 0.5f)
+                        fontSize = 14.sp,
+                        color = TextMuted,
+                        fontWeight = FontWeight.Medium
                     )
                 } else {
                     Text(
                         text = chunk.displayText,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = if (isCurrent) Color.White else Color.White.copy(alpha = 0.8f)
+                        fontSize = 16.sp,
+                        fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
+                        color = if (isCurrent) TextPrimary else TextSecondary,
+                        lineHeight = 24.sp
                     )
                 }
             }
 
+            // Actions
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (hasRecording) {
                     IconButton(
@@ -370,22 +444,32 @@ private fun ChunkItem(
                         Icon(
                             Icons.AutoMirrored.Filled.VolumeUp,
                             contentDescription = "Play recording",
-                            tint = ChunkHighlight,
-                            modifier = Modifier.size(20.dp)
+                            tint = AccentColor,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                if (isBlindMode && !isRevealed) {
-                    IconButton(
-                        onClick = onReveal,
-                        modifier = Modifier.size(32.dp)
+                if (isBlindMode && !isPeeking) {
+                    Box(
+                        modifier = Modifier
+                            .size(32.dp)
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        onPeekStart()
+                                        tryAwaitRelease()
+                                        onPeekEnd()
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            Icons.Default.Visibility,
-                            contentDescription = "Reveal",
-                            tint = Color.White.copy(alpha = 0.5f),
-                            modifier = Modifier.size(20.dp)
+                            Icons.Rounded.Visibility,
+                            contentDescription = "Peek",
+                            tint = TextMuted,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
@@ -395,24 +479,121 @@ private fun ChunkItem(
 }
 
 @Composable
-private fun LearningStateIndicator(
+private fun ModernSeekBar(
+    currentIndex: Int,
+    totalCount: Int,
+    onSeek: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (totalCount <= 0) return
+
+    val density = LocalDensity.current
+    var isDragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableFloatStateOf(0f) }
+    var trackWidth by remember { mutableStateOf(0f) }
+
+    val progress = if (isDragging) {
+        dragProgress
+    } else {
+        if (totalCount > 1) currentIndex.toFloat() / (totalCount - 1) else 0f
+    }
+
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(if (isDragging) 0 else 200),
+        label = "progress"
+    )
+
+    Column(modifier = modifier) {
+        // Track
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp)
+                .onSizeChanged { trackWidth = it.width.toFloat() }
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val newProgress = (offset.x / trackWidth).coerceIn(0f, 1f)
+                        val targetIndex = (newProgress * (totalCount - 1)).roundToInt()
+                        onSeek(targetIndex)
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            isDragging = true
+                            dragProgress = (offset.x / trackWidth).coerceIn(0f, 1f)
+                        },
+                        onDrag = { change, _ ->
+                            dragProgress = (change.position.x / trackWidth).coerceIn(0f, 1f)
+                        },
+                        onDragEnd = {
+                            val targetIndex = (dragProgress * (totalCount - 1)).roundToInt()
+                            onSeek(targetIndex)
+                            isDragging = false
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                        }
+                    )
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            // Background track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(TextMuted.copy(alpha = 0.2f))
+            )
+
+            // Progress track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(animatedProgress)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(AccentColor.copy(alpha = 0.7f), AccentColor)
+                        )
+                    )
+                    .align(Alignment.CenterStart)
+            )
+
+            // Thumb
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = ((trackWidth * animatedProgress) - with(density) { 8.dp.toPx() }).toInt(),
+                            y = 0
+                        )
+                    }
+                    .size(16.dp)
+                    .shadow(4.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(AccentColor)
+                    .align(Alignment.CenterStart)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ModernStateIndicator(
     state: LearningState,
     modifier: Modifier = Modifier
 ) {
-    val text = when (state) {
-        is LearningState.Idle -> "Ready"
-        is LearningState.Playing, is LearningState.PlayingFirst -> "Playing"
-        is LearningState.Paused -> "Paused"
-        is LearningState.Gap -> "Gap"
-        is LearningState.Recording, is LearningState.GapWithRecording -> "Recording"
-        is LearningState.PlayingSecond -> "Playing (2nd)"
-        is LearningState.PlaybackRecording -> "Your Recording"
-    }
-
-    val color = when (state) {
-        is LearningState.Recording, is LearningState.GapWithRecording -> Error
-        is LearningState.Playing, is LearningState.PlayingFirst, is LearningState.PlayingSecond -> ChunkHighlight
-        else -> Color.White.copy(alpha = 0.5f)
+    val (text, color) = when (state) {
+        is LearningState.Idle -> "Ready" to TextMuted
+        is LearningState.Playing, is LearningState.PlayingFirst -> "Playing" to AccentColor
+        is LearningState.Paused -> "Paused" to TextSecondary
+        is LearningState.Gap -> "Gap" to TextSecondary
+        is LearningState.Recording, is LearningState.GapWithRecording -> "Recording" to ErrorRed
+        is LearningState.PlayingSecond -> "Replay" to AccentColor
+        is LearningState.PlaybackRecording -> "Your Voice" to AccentColor
     }
 
     Row(
@@ -435,25 +616,27 @@ private fun LearningStateIndicator(
                 modifier = Modifier
                     .size(8.dp)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = alpha))
+                    .background(ErrorRed.copy(alpha = alpha))
             )
             Spacer(modifier = Modifier.width(8.dp))
         }
 
         Text(
             text = text,
-            style = MaterialTheme.typography.labelLarge,
-            color = color
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            letterSpacing = 1.sp
         )
     }
 }
 
 @Composable
-private fun PlayerControls(
+private fun ModernControls(
     isPlaying: Boolean,
     hasPlaylist: Boolean,
-    hasPreviousItem: Boolean = false,
-    hasNextItem: Boolean = false,
+    hasPreviousItem: Boolean,
+    hasNextItem: Boolean,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -461,71 +644,88 @@ private fun PlayerControls(
     onNextItem: () -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceEvenly,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        // Previous item
         IconButton(
             onClick = onPreviousItem,
-            enabled = hasPlaylist && hasPreviousItem
+            enabled = hasPlaylist && hasPreviousItem,
+            modifier = Modifier.size(48.dp)
         ) {
             Icon(
-                Icons.Default.SkipPrevious,
+                Icons.Rounded.SkipPrevious,
                 contentDescription = "Previous item",
-                tint = if (hasPlaylist && hasPreviousItem) Color.White else Color.White.copy(alpha = 0.3f),
+                tint = if (hasPlaylist && hasPreviousItem) TextSecondary else TextMuted,
+                modifier = Modifier.size(28.dp)
+            )
+        }
+
+        // Previous chunk
+        IconButton(
+            onClick = onPrevious,
+            modifier = Modifier.size(56.dp)
+        ) {
+            Icon(
+                Icons.Rounded.FastRewind,
+                contentDescription = "Previous chunk",
+                tint = TextPrimary,
                 modifier = Modifier.size(32.dp)
             )
         }
 
-        IconButton(onClick = onPrevious) {
-            Icon(
-                Icons.Default.FastRewind,
-                contentDescription = "Previous chunk",
-                tint = Color.White,
-                modifier = Modifier.size(36.dp)
-            )
-        }
-
-        FilledIconButton(
-            onClick = onPlayPause,
-            modifier = Modifier.size(72.dp),
-            colors = IconButtonDefaults.filledIconButtonColors(
-                containerColor = ChunkHighlight
-            )
+        // Play/Pause
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .shadow(8.dp, CircleShape)
+                .clip(CircleShape)
+                .background(AccentColor)
+                .clickable(onClick = onPlayPause),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                 contentDescription = if (isPlaying) "Pause" else "Play",
                 tint = Color.White,
-                modifier = Modifier.size(40.dp)
-            )
-        }
-
-        IconButton(onClick = onNext) {
-            Icon(
-                Icons.Default.FastForward,
-                contentDescription = "Next chunk",
-                tint = Color.White,
                 modifier = Modifier.size(36.dp)
             )
         }
 
+        // Next chunk
         IconButton(
-            onClick = onNextItem,
-            enabled = hasPlaylist && hasNextItem
+            onClick = onNext,
+            modifier = Modifier.size(56.dp)
         ) {
             Icon(
-                Icons.Default.SkipNext,
-                contentDescription = "Next item",
-                tint = if (hasPlaylist && hasNextItem) Color.White else Color.White.copy(alpha = 0.3f),
+                Icons.Rounded.FastForward,
+                contentDescription = "Next chunk",
+                tint = TextPrimary,
                 modifier = Modifier.size(32.dp)
+            )
+        }
+
+        // Next item
+        IconButton(
+            onClick = onNextItem,
+            enabled = hasPlaylist && hasNextItem,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Icon(
+                Icons.Rounded.SkipNext,
+                contentDescription = "Next item",
+                tint = if (hasPlaylist && hasNextItem) TextSecondary else TextMuted,
+                modifier = Modifier.size(28.dp)
             )
         }
     }
 }
 
 @Composable
-private fun LearningSettingsBar(
+private fun ModernSettingsBar(
     settings: LearningSettings,
     onRepeatChange: (Int) -> Unit,
     onGapRatioChange: (Float) -> Unit,
@@ -535,11 +735,11 @@ private fun LearningSettingsBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
-        SettingButton(
-            icon = Icons.Default.Repeat,
+        ModernSettingChip(
+            icon = Icons.Rounded.Repeat,
             label = "x${settings.repeatCount}",
             onClick = {
                 val next = if (settings.repeatCount >= 5) 1 else settings.repeatCount + 1
@@ -547,28 +747,28 @@ private fun LearningSettingsBar(
             }
         )
 
-        SettingButton(
-            icon = Icons.Default.Timer,
-            label = "${(settings.gapRatio * 100).toInt()}%",
+        ModernSettingChip(
+            icon = Icons.Rounded.Timer,
+            label = "+${(settings.gapRatio * 100).toInt()}%",
             onClick = {
-                val ratios = listOf(0.2f, 0.4f, 0.6f, 0.8f, 1.0f)
+                val ratios = listOf(0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f)
                 val currentIndex = ratios.indexOf(settings.gapRatio)
                 val nextIndex = (currentIndex + 1) % ratios.size
                 onGapRatioChange(ratios[nextIndex])
             }
         )
 
-        SettingButton(
-            icon = Icons.Default.Mic,
+        ModernSettingChip(
+            icon = Icons.Rounded.Mic,
             label = if (settings.isRecordingEnabled) "On" else "Off",
             isActive = settings.isRecordingEnabled,
             isEnabled = !settings.isHardMode,
             onClick = onRecordingToggle
         )
 
-        SettingButton(
-            icon = Icons.Default.Speed,
-            label = if (settings.isHardMode) "Hard" else "Normal",
+        ModernSettingChip(
+            icon = Icons.Rounded.Speed,
+            label = if (settings.isHardMode) "Hard" else "Easy",
             isActive = settings.isHardMode,
             onClick = onHardModeToggle
         )
@@ -576,38 +776,48 @@ private fun LearningSettingsBar(
 }
 
 @Composable
-private fun SettingButton(
+private fun ModernSettingChip(
     icon: ImageVector,
     label: String,
     isActive: Boolean = false,
     isEnabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val color = when {
-        !isEnabled -> Color.White.copy(alpha = 0.3f)
-        isActive -> ChunkHighlight
-        else -> Color.White.copy(alpha = 0.7f)
+    val chipColor = when {
+        !isEnabled -> TextMuted.copy(alpha = 0.3f)
+        isActive -> AccentColor
+        else -> TextSecondary
     }
 
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    val bgColor = when {
+        isActive -> AccentColorDim
+        else -> SurfaceLight
+    }
+
+    Box(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
+            .clip(RoundedCornerShape(12.dp))
+            .background(bgColor)
             .clickable(enabled = isEnabled, onClick = onClick)
-            .padding(12.dp)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = color,
-            modifier = Modifier.size(24.dp)
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = color
-        )
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = chipColor,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                color = chipColor
+            )
+        }
     }
 }
 

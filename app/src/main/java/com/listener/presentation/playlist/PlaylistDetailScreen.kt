@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -127,6 +128,16 @@ fun PlaylistDetailScreen(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
+                                text = { Text("Add Content") },
+                                onClick = {
+                                    showMenu = false
+                                    viewModel.showAddContentDialog()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.AutoMirrored.Outlined.PlaylistAdd, contentDescription = null)
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("Edit Name") },
                                 onClick = {
                                     showMenu = false
@@ -177,7 +188,7 @@ fun PlaylistDetailScreen(
                         title = "Playlist is Empty",
                         description = "Add episodes or audio files to this playlist",
                         actionLabel = "Add Content",
-                        onAction = { /* Add content */ },
+                        onAction = { viewModel.showAddContentDialog() },
                         modifier = Modifier.padding(paddingValues)
                     )
                 } else {
@@ -234,6 +245,17 @@ fun PlaylistDetailScreen(
                             viewModel.deletePlaylist {
                                 onNavigateBack()
                             }
+                        }
+                    )
+                }
+
+                // Add Content Dialog
+                if (state.showAddContentDialog) {
+                    AddContentDialog(
+                        availableContent = state.availableContent,
+                        onDismiss = { viewModel.dismissAddContentDialog() },
+                        onAddContent = { item ->
+                            viewModel.addContentToPlaylist(item)
                         }
                     )
                 }
@@ -639,6 +661,97 @@ private fun DeletePlaylistDialog(
             }
         }
     )
+}
+
+@Composable
+private fun AddContentDialog(
+    availableContent: List<AvailableContentItem>,
+    onDismiss: () -> Unit,
+    onAddContent: (AvailableContentItem) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add Content") },
+        text = {
+            if (availableContent.isEmpty()) {
+                Text(
+                    text = "No transcribed content available. Transcribe some content first.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.height(400.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(availableContent) { item ->
+                        AddContentItem(
+                            item = item,
+                            onAdd = { onAddContent(item) }
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Done")
+            }
+        },
+        dismissButton = {}
+    )
+}
+
+@Composable
+private fun AddContentItem(
+    item: AvailableContentItem,
+    onAdd: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = item.title,
+                    style = MaterialTheme.typography.bodyMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            if (item.isAlreadyAdded) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Added",
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                IconButton(onClick = onAdd) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Outlined.PlaylistAdd,
+                        contentDescription = "Add to playlist",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+        }
+    }
 }
 
 private fun formatDuration(ms: Long): String {

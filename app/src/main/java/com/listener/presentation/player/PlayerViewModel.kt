@@ -1,5 +1,6 @@
 package com.listener.presentation.player
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.listener.data.local.db.dao.LocalFileDao
@@ -12,6 +13,7 @@ import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
 import com.listener.domain.model.PlaybackState
 import com.listener.domain.repository.TranscriptionRepository
+import com.listener.service.PlaybackController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,11 +28,16 @@ class PlayerViewModel @Inject constructor(
     private val playlistDao: PlaylistDao,
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
-    private val recentLearningDao: RecentLearningDao
+    private val recentLearningDao: RecentLearningDao,
+    private val playbackController: PlaybackController
 ) : ViewModel() {
 
-    private val _playbackState = MutableStateFlow(PlaybackState())
-    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+    companion object {
+        private const val TAG = "PlayerViewModel"
+    }
+
+    // Use playback state from controller
+    val playbackState: StateFlow<PlaybackState> = playbackController.playbackState
 
     private val _chunks = MutableStateFlow<List<Chunk>>(emptyList())
     val chunks: StateFlow<List<Chunk>> = _chunks.asStateFlow()
@@ -48,27 +55,57 @@ class PlayerViewModel @Inject constructor(
     // Track recordings per chunk index
     private val recordings = mutableMapOf<Int, String>()
 
+    // Current content metadata
+    private var currentSourceId: String = ""
+    private var currentTitle: String = ""
+    private var currentSubtitle: String = ""
+    private var currentArtworkUrl: String? = null
+
+    init {
+        // Bind to PlaybackService when ViewModel is created
+        playbackController.bindService()
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        // Note: We don't unbind here since the controller is a singleton
+        // and might be used by other ViewModels
+    }
+
     fun loadContent(
         sourceId: String,
         title: String,
         subtitle: String,
         artworkUrl: String? = null
     ) {
+        Log.d(TAG, "loadContent: sourceId=$sourceId, title=$title")
         viewModelScope.launch {
+            currentSourceId = sourceId
+            currentTitle = title
+            currentSubtitle = subtitle
+            currentArtworkUrl = artworkUrl
+
             val loadedChunks = transcriptionRepository.getChunks(sourceId)
             _chunks.value = loadedChunks
+            Log.d(TAG, "Loaded ${loadedChunks.size} chunks")
 
-            _playbackState.update {
-                PlaybackState(
+            // Get the audio file path
+            val audioFilePath = playbackController.getAudioFilePath(sourceId)
+            Log.d(TAG, "Audio file path: $audioFilePath")
+
+            if (audioFilePath != null && loadedChunks.isNotEmpty()) {
+                // Set up playback content
+                playbackController.setContent(
                     sourceId = sourceId,
+                    audioUri = audioFilePath,
+                    chunks = loadedChunks,
+                    settings = LearningSettings(),
                     title = title,
                     subtitle = subtitle,
-                    artworkUrl = artworkUrl,
-                    totalChunks = loadedChunks.size,
-                    currentChunkIndex = 0,
-                    learningState = LearningState.Idle,
-                    isPlaying = false
+                    artworkUrl = artworkUrl
                 )
+            } else {
+                Log.e(TAG, "Cannot set content: audioFilePath=$audioFilePath, chunks=${loadedChunks.size}")
             }
         }
     }
@@ -77,7 +114,6 @@ class PlayerViewModel @Inject constructor(
         viewModelScope.launch {
             transcriptionRepository.observeChunks(sourceId).collect { loadedChunks ->
                 _chunks.value = loadedChunks
-                _playbackState.update { it.copy(totalChunks = loadedChunks.size) }
             }
         }
     }
@@ -86,24 +122,35 @@ class PlayerViewModel @Inject constructor(
      * Load content by sourceId, fetching metadata from recent learnings or searching in podcasts/local files.
      */
     fun loadBySourceId(sourceId: String) {
+        Log.d(TAG, "loadBySourceId: $sourceId")
+
+        // 이미 같은 sourceId가 재생 중이면 chunks만 sync (미니플레이어 → 전체화면 전환)
+        if (playbackController.playbackState.value.sourceId == sourceId) {
+            Log.d(TAG, "Same sourceId already playing, syncing chunks only")
+            viewModelScope.launch {
+                _chunks.value = transcriptionRepository.getChunks(sourceId)
+            }
+            return
+        }
+
         viewModelScope.launch {
             // First try to find in recent learnings for quick metadata
             val recentLearning = recentLearningDao.getRecentLearning(sourceId)
             if (recentLearning != null) {
+                Log.d(TAG, "Found in recent learnings: ${recentLearning.title}")
                 loadContent(
                     sourceId = recentLearning.sourceId,
                     title = recentLearning.title,
                     subtitle = recentLearning.subtitle,
                     artworkUrl = recentLearning.thumbnailUrl
                 )
-                // Seek to the last position
-                _playbackState.update { it.copy(currentChunkIndex = recentLearning.currentChunkIndex) }
                 return@launch
             }
 
             // Try podcast episodes
             val episode = podcastDao.getEpisode(sourceId)
             if (episode != null) {
+                Log.d(TAG, "Found episode: ${episode.title}")
                 loadContent(
                     sourceId = episode.id,
                     title = episode.title,
@@ -116,6 +163,7 @@ class PlayerViewModel @Inject constructor(
             // Try local files
             val localFile = localFileDao.getFile(sourceId)
             if (localFile != null) {
+                Log.d(TAG, "Found local file: ${localFile.displayName}")
                 loadContent(
                     sourceId = localFile.contentHash,
                     title = localFile.displayName,
@@ -126,6 +174,7 @@ class PlayerViewModel @Inject constructor(
             }
 
             // Fallback: just load chunks without metadata
+            Log.d(TAG, "No metadata found, loading with sourceId only")
             loadContent(
                 sourceId = sourceId,
                 title = "Unknown",
@@ -136,77 +185,59 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun togglePlayPause() {
-        _playbackState.update { state ->
-            state.copy(
-                isPlaying = !state.isPlaying,
-                learningState = if (state.isPlaying) LearningState.Paused else LearningState.Playing
-            )
-        }
+        Log.d(TAG, "togglePlayPause()")
+        playbackController.togglePlayPause()
     }
 
     fun nextChunk() {
-        _playbackState.update { state ->
-            val nextIndex = (state.currentChunkIndex + 1).coerceAtMost(state.totalChunks - 1)
-            state.copy(currentChunkIndex = nextIndex)
-        }
+        Log.d(TAG, "nextChunk()")
+        playbackController.nextChunk()
     }
 
     fun previousChunk() {
-        _playbackState.update { state ->
-            val prevIndex = (state.currentChunkIndex - 1).coerceAtLeast(0)
-            state.copy(currentChunkIndex = prevIndex)
-        }
+        Log.d(TAG, "previousChunk()")
+        playbackController.previousChunk()
     }
 
     fun seekToChunk(index: Int) {
-        _playbackState.update { state ->
-            val clampedIndex = index.coerceIn(0, maxOf(0, state.totalChunks - 1))
-            state.copy(currentChunkIndex = clampedIndex)
-        }
+        Log.d(TAG, "seekToChunk($index)")
+        playbackController.seekToChunk(index)
     }
 
     fun setRepeatCount(count: Int) {
-        _playbackState.update { state ->
-            state.copy(
-                settings = state.settings.copy(repeatCount = count.coerceIn(1, 5))
-            )
-        }
+        Log.d(TAG, "setRepeatCount($count)")
+        val newSettings = playbackState.value.settings.copy(repeatCount = count.coerceIn(1, 5))
+        playbackController.updateSettings(newSettings)
     }
 
     fun setGapRatio(ratio: Float) {
-        _playbackState.update { state ->
-            state.copy(
-                settings = state.settings.copy(gapRatio = ratio.coerceIn(0.2f, 1.0f))
-            )
-        }
+        Log.d(TAG, "setGapRatio($ratio)")
+        val newSettings = playbackState.value.settings.copy(gapRatio = ratio.coerceIn(0.2f, 1.0f))
+        playbackController.updateSettings(newSettings)
     }
 
     fun toggleRecording() {
-        _playbackState.update { state ->
-            if (state.settings.isHardMode) return@update state
-            state.copy(
-                settings = state.settings.copy(isRecordingEnabled = !state.settings.isRecordingEnabled)
-            )
-        }
+        Log.d(TAG, "toggleRecording()")
+        val currentSettings = playbackState.value.settings
+        if (currentSettings.isHardMode) return
+        val newSettings = currentSettings.copy(isRecordingEnabled = !currentSettings.isRecordingEnabled)
+        playbackController.updateSettings(newSettings)
     }
 
     fun toggleHardMode() {
-        _playbackState.update { state ->
-            val newHardMode = !state.settings.isHardMode
-            state.copy(
-                settings = state.settings.copy(
-                    isHardMode = newHardMode,
-                    // Hard mode always has recording enabled
-                    isRecordingEnabled = if (newHardMode) true else state.settings.isRecordingEnabled
-                )
-            )
-        }
+        Log.d(TAG, "toggleHardMode()")
+        val currentSettings = playbackState.value.settings
+        val newHardMode = !currentSettings.isHardMode
+        val newSettings = currentSettings.copy(
+            isHardMode = newHardMode,
+            isRecordingEnabled = if (newHardMode) true else currentSettings.isRecordingEnabled
+        )
+        playbackController.updateSettings(newSettings)
     }
 
     fun updateSettings(settings: LearningSettings) {
-        _playbackState.update { state ->
-            state.copy(settings = settings)
-        }
+        Log.d(TAG, "updateSettings()")
+        playbackController.updateSettings(settings)
     }
 
     fun hasRecording(chunkIndex: Int): Boolean {
@@ -220,7 +251,7 @@ class PlayerViewModel @Inject constructor(
     fun playRecording(chunkIndex: Int) {
         val filePath = recordings[chunkIndex] ?: return
         // Actual playback implementation would go here
-        _playbackState.update { it.copy(learningState = LearningState.PlaybackRecording) }
+        Log.d(TAG, "playRecording: $filePath")
     }
 
     fun deleteRecording(chunkIndex: Int) {
@@ -228,7 +259,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun stop() {
-        _playbackState.update { PlaybackState() }
+        playbackController.stop()
         _chunks.value = emptyList()
         recordings.clear()
         _playlistId.value = null

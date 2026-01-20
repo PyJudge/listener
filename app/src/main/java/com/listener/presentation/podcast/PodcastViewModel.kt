@@ -22,7 +22,7 @@ import javax.inject.Inject
 data class PodcastUiState(
     val subscriptions: List<SubscribedPodcastEntity> = emptyList(),
     val searchResults: List<ITunesPodcast> = emptyList(),
-    val isLoading: Boolean = false,
+    val isLoading: Boolean = true,
     val isSearching: Boolean = false,
     val error: String? = null
 )
@@ -46,7 +46,6 @@ class PodcastViewModel @Inject constructor(
 
     private fun loadSubscriptions() {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
             podcastDao.getAllSubscriptions().collect { subscriptions ->
                 _uiState.update { it.copy(subscriptions = subscriptions, isLoading = false) }
             }
@@ -96,6 +95,7 @@ class PodcastViewModel @Inject constructor(
     fun subscribe(podcast: ITunesPodcast) {
         viewModelScope.launch {
             val feedUrl = podcast.feedUrl ?: return@launch
+            val maxOrder = podcastDao.getMaxOrderIndex() ?: -1
             val entity = SubscribedPodcastEntity(
                 feedUrl = feedUrl,
                 collectionId = podcast.collectionId,
@@ -103,7 +103,8 @@ class PodcastViewModel @Inject constructor(
                 description = podcast.description,
                 artworkUrl = podcast.artworkUrl600 ?: podcast.artworkUrl100,
                 lastCheckedAt = System.currentTimeMillis(),
-                addedAt = System.currentTimeMillis()
+                addedAt = System.currentTimeMillis(),
+                orderIndex = maxOrder + 1
             )
             podcastDao.insertSubscription(entity)
         }
@@ -112,6 +113,24 @@ class PodcastViewModel @Inject constructor(
     fun unsubscribe(feedUrl: String) {
         viewModelScope.launch {
             podcastDao.deleteSubscriptionByFeedUrl(feedUrl)
+        }
+    }
+
+    fun reorderPodcasts(fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch {
+            val currentList = _uiState.value.subscriptions.toMutableList()
+            if (fromIndex < 0 || fromIndex >= currentList.size ||
+                toIndex < 0 || toIndex >= currentList.size) {
+                return@launch
+            }
+
+            val movedItem = currentList.removeAt(fromIndex)
+            currentList.add(toIndex, movedItem)
+
+            // Update order indices in database
+            currentList.forEachIndexed { index, podcast ->
+                podcastDao.updateOrderIndex(podcast.feedUrl, index)
+            }
         }
     }
 

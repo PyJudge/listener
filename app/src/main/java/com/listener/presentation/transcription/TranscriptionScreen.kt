@@ -43,7 +43,6 @@ import com.listener.presentation.theme.ListenerTheme
 @Composable
 fun TranscriptionScreen(
     sourceId: String,
-    audioFilePath: String? = null,
     onNavigateBack: () -> Unit = {},
     onTranscriptionComplete: () -> Unit = {},
     viewModel: TranscriptionViewModel = hiltViewModel()
@@ -54,13 +53,6 @@ fun TranscriptionScreen(
         targetValue = uiState.overallProgress,
         label = "progress"
     )
-
-    // Start transcription when screen opens
-    LaunchedEffect(sourceId, audioFilePath) {
-        if (audioFilePath != null && uiState.step == TranscriptionStep.IDLE) {
-            viewModel.startTranscription(audioFilePath)
-        }
-    }
 
     // Navigate when complete
     LaunchedEffect(uiState.step) {

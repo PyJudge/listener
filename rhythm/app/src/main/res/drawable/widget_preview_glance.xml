@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 Glance Widget Preview - Modern Design -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="250dp"
+    android:height="250dp"
+    android:viewportWidth="250"
+    android:viewportHeight="250">
+    
+    <!-- Widget background - Material 3 surface with rounded corners -->
+    <path
+        android:fillColor="#E6E0E9"
+        android:pathData="M24,0 L226,0 Q250,0 250,24 L250,226 Q250,250 226,250 L24,250 Q0,250 0,226 L0,24 Q0,0 24,0 Z"/>
+    
+    <!-- Album art with modern rounded corners -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M45,30 L205,30 Q225,30 225,50 L225,130 Q225,150 205,150 L45,150 Q25,150 25,130 L25,50 Q25,30 45,30 Z"/>
+    
+    <!-- Music note icon overlay -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.9"
+        android:pathData="M125,70 L125,115 Q125,122 118,122 Q111,122 111,115 Q111,108 118,108 Q121,108 125,110 L125,70 L140,70 L140,78 L125,78 Z"/>
+    
+    <!-- Song title - high contrast -->
+    <path
+        android:fillColor="#1D1B20"
+        android:pathData="M40,170 L210,170 L210,180 L40,180 Z"/>
+    
+    <!-- Artist name - medium emphasis -->
+    <path
+        android:fillColor="#49454F"
+        android:pathData="M40,190 L180,190 L180,198 L40,198 Z"/>
+    
+    <!-- Playback controls container -->
+    <!-- Previous button - secondary container -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M65,212 Q88,212 88,228 Q88,244 65,244 Q42,244 42,228 Q42,212 65,212 Z"/>
+    <!-- Skip previous icon -->
+    <path
+        android:fillColor="#1D192B"
+        android:pathData="M71,221 L64,228 L71,235 L71,221 Z M61,222 L61,234 L59,234 L59,222 Z"/>
+    
+    <!-- Play button - Android 16 rounded rectangle primary -->
+    <path
+        android:fillColor="#6750A4"
+        android:pathData="M105,207 L145,207 Q151,207 151,213 L151,243 Q151,249 145,249 L105,249 Q99,249 99,243 L99,213 Q99,207 105,207 Z"/>
+    <!-- Play icon -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M119,218 L136,228 L119,238 Z"/>
+    
+    <!-- Next button - secondary container -->
+    <path
+        android:fillColor="#E8DEF8"
+        android:pathData="M185,212 Q208,212 208,228 Q208,244 185,244 Q162,244 162,228 Q162,212 185,212 Z"/>
+    <!-- Skip next icon -->
+    <path
+        android:fillColor="#1D192B"
+        android:pathData="M179,221 L186,228 L179,235 L179,221 Z M189,222 L189,234 L191,234 L191,222 Z"/>
+</vector>

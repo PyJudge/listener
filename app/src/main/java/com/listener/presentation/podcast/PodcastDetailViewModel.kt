@@ -80,14 +80,18 @@ class PodcastDetailViewModel @Inject constructor(
 
             podcastRepository.refreshEpisodes(feedUrl)
                 .onSuccess {
+                    // Reload podcast to get updated description from RSS
+                    val updatedPodcast = podcastRepository.getSubscription(feedUrl)
                     _uiState.update { currentState ->
                         when (currentState) {
-                            is PodcastDetailUiState.Success -> currentState.copy(isRefreshing = false)
+                            is PodcastDetailUiState.Success -> currentState.copy(
+                                podcast = updatedPodcast ?: currentState.podcast,
+                                isRefreshing = false
+                            )
                             is PodcastDetailUiState.Loading -> {
-                                val podcast = podcastRepository.getSubscription(feedUrl)
-                                if (podcast != null) {
+                                if (updatedPodcast != null) {
                                     PodcastDetailUiState.Success(
-                                        podcast = podcast,
+                                        podcast = updatedPodcast,
                                         episodes = it,
                                         isRefreshing = false
                                     )
