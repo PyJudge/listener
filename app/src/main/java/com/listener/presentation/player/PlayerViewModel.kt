@@ -8,12 +8,16 @@ import com.listener.data.local.db.dao.PlaylistDao
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.entity.PlaylistItemEntity
+import com.listener.data.repository.SettingsRepository
 import com.listener.domain.model.Chunk
+import com.listener.domain.model.ChunkSettings
 import com.listener.domain.model.LearningSettings
-import com.listener.domain.model.LearningState
 import com.listener.domain.model.PlaybackState
 import com.listener.domain.repository.TranscriptionRepository
+import com.listener.domain.usecase.RechunkResult
+import com.listener.domain.usecase.RechunkUseCase
 import com.listener.service.PlaybackController
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -29,7 +33,9 @@ class PlayerViewModel @Inject constructor(
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
     private val recentLearningDao: RecentLearningDao,
-    private val playbackController: PlaybackController
+    private val playbackController: PlaybackController,
+    private val settingsRepository: SettingsRepository,
+    private val rechunkUseCase: RechunkUseCase
 ) : ViewModel() {
 
     companion object {
@@ -85,7 +91,35 @@ class PlayerViewModel @Inject constructor(
             currentSubtitle = subtitle
             currentArtworkUrl = artworkUrl
 
-            val loadedChunks = transcriptionRepository.getChunks(sourceId)
+            // 현재 앱 설정 가져오기
+            val appSettings = settingsRepository.settings.first()
+            val currentChunkSettings = ChunkSettings(
+                sentenceOnly = appSettings.sentenceOnly,
+                minChunkMs = appSettings.minChunkMs
+            )
+
+            // 저장된 청크 설정과 비교하여 다르면 rechunk 수행
+            val savedSettings = transcriptionRepository.getChunkSettings(sourceId)
+            val loadedChunks = if (savedSettings != null && savedSettings != currentChunkSettings) {
+                Log.d(TAG, "Settings changed, rechunking: saved=$savedSettings, current=$currentChunkSettings")
+                when (val result = rechunkUseCase.execute(sourceId, currentChunkSettings, deleteRecordings = true)) {
+                    is RechunkResult.Success -> result.chunks
+                    is RechunkResult.RecordingsExist -> {
+                        Log.d(TAG, "Recordings exist, rechunking anyway")
+                        when (val retryResult = rechunkUseCase.execute(sourceId, currentChunkSettings, deleteRecordings = true)) {
+                            is RechunkResult.Success -> retryResult.chunks
+                            else -> transcriptionRepository.getChunks(sourceId)
+                        }
+                    }
+                    is RechunkResult.Error -> {
+                        Log.e(TAG, "Rechunk error: ${result.message}")
+                        transcriptionRepository.getChunks(sourceId)
+                    }
+                }
+            } else {
+                transcriptionRepository.getChunks(sourceId)
+            }
+
             _chunks.value = loadedChunks
             Log.d(TAG, "Loaded ${loadedChunks.size} chunks")
 
@@ -124,11 +158,14 @@ class PlayerViewModel @Inject constructor(
     fun loadBySourceId(sourceId: String) {
         Log.d(TAG, "loadBySourceId: $sourceId")
 
-        // 이미 같은 sourceId가 재생 중이면 chunks만 sync (미니플레이어 → 전체화면 전환)
+        // 이미 같은 sourceId가 재생 중이면 skip (미니플레이어 → 전체화면 전환 시 불필요한 갱신 방지)
         if (playbackController.playbackState.value.sourceId == sourceId) {
-            Log.d(TAG, "Same sourceId already playing, syncing chunks only")
-            viewModelScope.launch {
-                _chunks.value = transcriptionRepository.getChunks(sourceId)
+            Log.d(TAG, "Same sourceId already playing, skipping reload")
+            // chunks가 비어있을 때만 로드
+            if (_chunks.value.isEmpty()) {
+                viewModelScope.launch {
+                    _chunks.value = transcriptionRepository.getChunks(sourceId)
+                }
             }
             return
         }

@@ -1,7 +1,11 @@
 package com.listener.presentation.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -9,9 +13,13 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Check
@@ -27,19 +35,30 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
@@ -48,6 +67,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.listener.service.AudioCacheManager
 import com.listener.presentation.theme.ListenerTheme
+import com.listener.presentation.theme.PurpleAlpha
+import com.listener.presentation.theme.PurplePrimary
+import com.listener.presentation.theme.SurfaceElevated
+import com.listener.presentation.theme.TextMuted
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,7 +82,12 @@ fun SettingsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Settings") })
+            TopAppBar(
+                title = { Text("Settings") },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
         }
     ) { padding ->
         LazyColumn(
@@ -319,7 +347,14 @@ private fun SettingsSwitchItem(
             }
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = PurplePrimary,
+                    uncheckedThumbColor = TextMuted,
+                    uncheckedTrackColor = SurfaceElevated,
+                    uncheckedBorderColor = Color.Transparent
+                )
             )
         }
     }
@@ -334,10 +369,18 @@ private fun SettingsSliderItem(
     valueLabel: String,
     onValueChange: (Float) -> Unit
 ) {
+    val density = LocalDensity.current
+    var isDragging by remember { mutableStateOf(false) }
+    var trackWidth by remember { mutableFloatStateOf(0f) }
+
+    // Normalize value to 0-1 range
+    val normalizedValue = ((value - valueRange.start) / (valueRange.endInclusive - valueRange.start))
+        .coerceIn(0f, 1f)
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -350,16 +393,77 @@ private fun SettingsSliderItem(
             Text(
                 text = valueLabel,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary
+                color = PurplePrimary
             )
         }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
-            modifier = Modifier.fillMaxWidth()
-        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Custom slim slider
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(24.dp)
+                .onSizeChanged { trackWidth = it.width.toFloat() }
+                .pointerInput(Unit) {
+                    detectTapGestures { offset ->
+                        val newNormalized = (offset.x / trackWidth).coerceIn(0f, 1f)
+                        val newValue = valueRange.start + newNormalized * (valueRange.endInclusive - valueRange.start)
+                        // Snap to steps
+                        val stepSize = (valueRange.endInclusive - valueRange.start) / (steps + 1)
+                        val snappedValue = (newValue / stepSize).roundToInt() * stepSize
+                        onValueChange(snappedValue.coerceIn(valueRange.start, valueRange.endInclusive))
+                    }
+                }
+                .pointerInput(Unit) {
+                    detectDragGestures(
+                        onDragStart = { isDragging = true },
+                        onDrag = { change, _ ->
+                            val newNormalized = (change.position.x / trackWidth).coerceIn(0f, 1f)
+                            val newValue = valueRange.start + newNormalized * (valueRange.endInclusive - valueRange.start)
+                            val stepSize = (valueRange.endInclusive - valueRange.start) / (steps + 1)
+                            val snappedValue = (newValue / stepSize).roundToInt() * stepSize
+                            onValueChange(snappedValue.coerceIn(valueRange.start, valueRange.endInclusive))
+                        },
+                        onDragEnd = { isDragging = false },
+                        onDragCancel = { isDragging = false }
+                    )
+                },
+            contentAlignment = Alignment.CenterStart
+        ) {
+            // Background track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(SurfaceElevated)
+            )
+
+            // Active track
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(normalizedValue)
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(PurplePrimary)
+            )
+
+            // Thumb
+            Box(
+                modifier = Modifier
+                    .offset {
+                        IntOffset(
+                            x = ((trackWidth * normalizedValue) - with(density) { 6.dp.toPx() }).toInt().coerceAtLeast(0),
+                            y = 0
+                        )
+                    }
+                    .size(12.dp)
+                    .shadow(2.dp, CircleShape)
+                    .clip(CircleShape)
+                    .background(PurplePrimary)
+            )
+        }
     }
 }
 
@@ -399,8 +503,8 @@ private fun SettingsStorageItem(
             LinearProgressIndicator(
                 progress = { progress },
                 modifier = Modifier.fillMaxWidth(),
-                color = if (progress > 0.9f) MaterialTheme.colorScheme.error
-                else MaterialTheme.colorScheme.primary
+                color = if (progress > 0.9f) MaterialTheme.colorScheme.error else PurplePrimary,
+                trackColor = SurfaceElevated
             )
         }
     }

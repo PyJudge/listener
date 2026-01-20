@@ -153,25 +153,28 @@ private fun ProgressContent(
         textAlign = TextAlign.Center
     )
 
-    Spacer(modifier = Modifier.height(48.dp))
+    // Only show linear progress bar for non-downloading steps
+    if (step != TranscriptionStep.DOWNLOADING) {
+        Spacer(modifier = Modifier.height(48.dp))
 
-    LinearProgressIndicator(
-        progress = { progress },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(8.dp)
-            .clip(RoundedCornerShape(4.dp)),
-        trackColor = MaterialTheme.colorScheme.surfaceVariant
-    )
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(RoundedCornerShape(4.dp)),
+            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        )
 
-    Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-    Text(
-        text = "This may take a few minutes depending on the audio length",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        textAlign = TextAlign.Center
-    )
+        Text(
+            text = "This may take a few minutes depending on the audio length",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center
+        )
+    }
 }
 
 @Composable
