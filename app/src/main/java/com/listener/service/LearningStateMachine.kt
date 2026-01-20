@@ -1,8 +1,8 @@
 package com.listener.service
 
-import com.listener.domain.model.LearningMode
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
+import com.listener.domain.model.PlayMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -55,9 +55,10 @@ class LearningStateMachine @Inject constructor() {
     }
 
     fun play() {
-        when (settings.mode) {
-            LearningMode.NORMAL -> setState(LearningState.Playing)
-            LearningMode.HARD -> setState(LearningState.PlayingFirst)
+        when (settings.playMode) {
+            PlayMode.NORMAL -> setState(LearningState.Playing)
+            PlayMode.LR -> setState(LearningState.Playing)
+            PlayMode.LRLR -> setState(LearningState.PlayingFirst)
         }
         currentRepeat = 1
         pausedPositionMs = 0L
@@ -102,9 +103,10 @@ class LearningStateMachine @Inject constructor() {
     }
 
     fun onPlaybackComplete(): TransitionResult {
-        return when (settings.mode) {
-            LearningMode.NORMAL -> handleNormalModeComplete()
-            LearningMode.HARD -> handleHardModeComplete()
+        return when (settings.playMode) {
+            PlayMode.NORMAL -> handleNormalModeComplete()
+            PlayMode.LR -> handleLRModeComplete()
+            PlayMode.LRLR -> handleLRLRModeComplete()
         }
     }
 
@@ -128,19 +130,12 @@ class LearningStateMachine @Inject constructor() {
         }
     }
 
+    /**
+     * Normal 모드: 공백 없이 반복 재생
+     */
     private fun handleNormalModeComplete(): TransitionResult {
         return when (_state.value) {
             is LearningState.Playing -> {
-                setState(
-                    if (settings.isRecordingEnabled) {
-                        LearningState.Recording
-                    } else {
-                        LearningState.Gap
-                    }
-                )
-                TransitionResult.Continue
-            }
-            is LearningState.Gap, is LearningState.Recording -> {
                 if (currentRepeat < settings.repeatCount) {
                     currentRepeat++
                     setState(LearningState.Playing)
@@ -155,7 +150,34 @@ class LearningStateMachine @Inject constructor() {
         }
     }
 
-    private fun handleHardModeComplete(): TransitionResult {
+    /**
+     * L/R 모드: Listen → Gap → 반복
+     */
+    private fun handleLRModeComplete(): TransitionResult {
+        return when (_state.value) {
+            is LearningState.Playing -> {
+                setState(LearningState.Gap)
+                TransitionResult.Continue
+            }
+            is LearningState.Gap -> {
+                if (currentRepeat < settings.repeatCount) {
+                    currentRepeat++
+                    setState(LearningState.Playing)
+                    TransitionResult.Continue
+                } else {
+                    currentRepeat = 1
+                    setState(LearningState.Idle)
+                    TransitionResult.NextChunk
+                }
+            }
+            else -> TransitionResult.Continue
+        }
+    }
+
+    /**
+     * L/R/LR 모드: Listen → Gap+Recording → Listen → Playback → 반복
+     */
+    private fun handleLRLRModeComplete(): TransitionResult {
         return when (_state.value) {
             is LearningState.PlayingFirst -> {
                 setState(LearningState.GapWithRecording)

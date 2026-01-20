@@ -78,24 +78,24 @@ class TranscriptionViewModel @Inject constructor(
     private fun startTranscriptionForSource(language: String = "en") {
         viewModelScope.launch {
             try {
-                // Check API key first before any processing
-                if (!openAiService.hasApiKey()) {
-                    _uiState.update {
-                        it.copy(
-                            step = TranscriptionStep.ERROR,
-                            errorMessage = "OpenAI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요."
-                        )
-                    }
-                    return@launch
-                }
-
-                // Check if already transcribed
+                // Check if already transcribed FIRST - no API key needed for already transcribed content
                 if (transcriptionRepository.hasTranscription(sourceId, language)) {
                     val chunks = transcriptionRepository.getChunks(sourceId)
                     _uiState.update {
                         it.copy(
                             step = TranscriptionStep.COMPLETE,
                             chunkCount = chunks.size
+                        )
+                    }
+                    return@launch
+                }
+
+                // Check API key only when transcription is actually needed
+                if (!openAiService.hasApiKey()) {
+                    _uiState.update {
+                        it.copy(
+                            step = TranscriptionStep.ERROR,
+                            errorMessage = "OpenAI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요."
                         )
                     }
                     return@launch

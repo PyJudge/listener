@@ -13,6 +13,7 @@ import com.listener.domain.model.Chunk
 import com.listener.domain.model.ChunkSettings
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.PlaybackState
+import com.listener.domain.model.PlayMode
 import com.listener.domain.repository.TranscriptionRepository
 import com.listener.domain.usecase.RechunkResult
 import com.listener.domain.usecase.RechunkUseCase
@@ -67,9 +68,57 @@ class PlayerViewModel @Inject constructor(
     private var currentSubtitle: String = ""
     private var currentArtworkUrl: String? = null
 
+    // 이전 chunk 설정 저장 (변경 감지용)
+    private var lastChunkSettings: ChunkSettings? = null
+
     init {
         // Bind to PlaybackService when ViewModel is created
         playbackController.bindService()
+
+        // 설정 변경 감지 - chunk 관련 설정이 바뀌면 rechunk 수행
+        viewModelScope.launch {
+            settingsRepository.settings.collect { appSettings ->
+                val newChunkSettings = ChunkSettings(
+                    sentenceOnly = appSettings.sentenceOnly,
+                    minChunkMs = appSettings.minChunkMs
+                )
+
+                // 이전 설정과 다르고, 현재 로드된 콘텐츠가 있으면 rechunk
+                if (lastChunkSettings != null &&
+                    lastChunkSettings != newChunkSettings &&
+                    currentSourceId.isNotEmpty()
+                ) {
+                    Log.d(TAG, "Settings changed, stopping and rechunking: $lastChunkSettings -> $newChunkSettings")
+                    // 재생 정지
+                    playbackController.stop()
+                    // rechunk 수행
+                    performRechunk(currentSourceId, newChunkSettings)
+                }
+                lastChunkSettings = newChunkSettings
+            }
+        }
+    }
+
+    private suspend fun performRechunk(sourceId: String, chunkSettings: ChunkSettings) {
+        when (val result = rechunkUseCase.execute(sourceId, chunkSettings, deleteRecordings = true)) {
+            is RechunkResult.Success -> {
+                _chunks.value = result.chunks
+                Log.d(TAG, "Rechunk successful: ${result.chunks.size} chunks")
+            }
+            is RechunkResult.RecordingsExist -> {
+                // 녹음이 있어도 강제로 rechunk
+                when (val retryResult = rechunkUseCase.execute(sourceId, chunkSettings, deleteRecordings = true)) {
+                    is RechunkResult.Success -> {
+                        _chunks.value = retryResult.chunks
+                        Log.d(TAG, "Rechunk successful after retry: ${retryResult.chunks.size} chunks")
+                    }
+                    else -> Log.e(TAG, "Rechunk failed after retry")
+                }
+            }
+            is RechunkResult.Error -> {
+                Log.e(TAG, "Rechunk error: ${result.message}")
+            }
+        }
     }
 
     override fun onCleared() {
@@ -128,12 +177,13 @@ class PlayerViewModel @Inject constructor(
             Log.d(TAG, "Audio file path: $audioFilePath")
 
             if (audioFilePath != null && loadedChunks.isNotEmpty()) {
-                // Set up playback content
+                // Set up playback content - 기존 설정 유지 (플레이리스트 전환 시 초기화 방지)
+                val currentSettings = playbackState.value.settings
                 playbackController.setContent(
                     sourceId = sourceId,
                     audioUri = audioFilePath,
                     chunks = loadedChunks,
-                    settings = LearningSettings(),
+                    settings = currentSettings,
                     title = title,
                     subtitle = subtitle,
                     artworkUrl = artworkUrl
@@ -158,12 +208,24 @@ class PlayerViewModel @Inject constructor(
     fun loadBySourceId(sourceId: String) {
         Log.d(TAG, "loadBySourceId: $sourceId")
 
-        // 이미 같은 sourceId가 재생 중이면 skip (미니플레이어 → 전체화면 전환 시 불필요한 갱신 방지)
+        // 이미 같은 sourceId가 재생 중이면 설정 변경만 확인
         if (playbackController.playbackState.value.sourceId == sourceId) {
-            Log.d(TAG, "Same sourceId already playing, skipping reload")
-            // chunks가 비어있을 때만 로드
-            if (_chunks.value.isEmpty()) {
-                viewModelScope.launch {
+            Log.d(TAG, "Same sourceId already playing, checking settings change")
+            viewModelScope.launch {
+                // 현재 앱 설정 가져오기
+                val appSettings = settingsRepository.settings.first()
+                val currentChunkSettings = ChunkSettings(
+                    sentenceOnly = appSettings.sentenceOnly,
+                    minChunkMs = appSettings.minChunkMs
+                )
+
+                // 저장된 청크 설정과 비교
+                val savedSettings = transcriptionRepository.getChunkSettings(sourceId)
+                if (savedSettings != null && savedSettings != currentChunkSettings) {
+                    Log.d(TAG, "Settings changed, rechunking: saved=$savedSettings, current=$currentChunkSettings")
+                    performRechunk(sourceId, currentChunkSettings)
+                } else if (_chunks.value.isEmpty()) {
+                    // chunks가 비어있을 때만 로드
                     _chunks.value = transcriptionRepository.getChunks(sourceId)
                 }
             }
@@ -253,22 +315,15 @@ class PlayerViewModel @Inject constructor(
         playbackController.updateSettings(newSettings)
     }
 
-    fun toggleRecording() {
-        Log.d(TAG, "toggleRecording()")
+    fun togglePlayMode() {
+        Log.d(TAG, "togglePlayMode()")
         val currentSettings = playbackState.value.settings
-        if (currentSettings.isHardMode) return
-        val newSettings = currentSettings.copy(isRecordingEnabled = !currentSettings.isRecordingEnabled)
-        playbackController.updateSettings(newSettings)
-    }
-
-    fun toggleHardMode() {
-        Log.d(TAG, "toggleHardMode()")
-        val currentSettings = playbackState.value.settings
-        val newHardMode = !currentSettings.isHardMode
-        val newSettings = currentSettings.copy(
-            isHardMode = newHardMode,
-            isRecordingEnabled = if (newHardMode) true else currentSettings.isRecordingEnabled
-        )
+        val nextMode = when (currentSettings.playMode) {
+            PlayMode.NORMAL -> PlayMode.LR
+            PlayMode.LR -> PlayMode.LRLR
+            PlayMode.LRLR -> PlayMode.NORMAL
+        }
+        val newSettings = currentSettings.copy(playMode = nextMode)
         playbackController.updateSettings(newSettings)
     }
 

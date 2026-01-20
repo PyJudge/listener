@@ -14,16 +14,19 @@ sealed class LearningState {
     data object PlaybackRecording : LearningState()  // 내 녹음 재생
 }
 
-enum class LearningMode {
-    NORMAL,
-    HARD
+enum class PlayMode {
+    NORMAL,  // 일반 재생 (공백 없음)
+    LR,      // Listen & Repeat (듣고 따라하기)
+    LRLR     // Listen & Repeat + 녹음 재생
 }
 
 data class LearningSettings(
     val repeatCount: Int = 2,
     val gapRatio: Float = 0.4f,
-    val isRecordingEnabled: Boolean = true,
-    val isHardMode: Boolean = false
+    val playMode: PlayMode = PlayMode.LR
 ) {
-    val mode: LearningMode get() = if (isHardMode) LearningMode.HARD else LearningMode.NORMAL
+    // 하위 호환성
+    val isHardMode: Boolean get() = playMode == PlayMode.LRLR
+    val isRecordingEnabled: Boolean get() = playMode == PlayMode.LRLR
+    val isNormalMode: Boolean get() = playMode == PlayMode.NORMAL
 }

@@ -9,11 +9,15 @@ import com.listener.data.local.db.entity.LocalAudioFileEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
 import com.listener.data.local.db.entity.RecentLearningEntity
+import com.listener.data.repository.AppSettings
+import com.listener.data.repository.SettingsRepository
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
 import com.listener.domain.model.PlaybackState
+import com.listener.domain.model.PlayMode
 import com.listener.domain.repository.TranscriptionRepository
+import com.listener.domain.usecase.RechunkUseCase
 import com.listener.service.PlaybackController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,9 +50,12 @@ class PlayerViewModelTest {
     private lateinit var localFileDao: LocalFileDao
     private lateinit var recentLearningDao: RecentLearningDao
     private lateinit var playbackController: PlaybackController
+    private lateinit var settingsRepository: SettingsRepository
+    private lateinit var rechunkUseCase: RechunkUseCase
     private lateinit var viewModel: PlayerViewModel
 
     private val mockPlaybackState = MutableStateFlow(PlaybackState())
+    private val mockAppSettings = MutableStateFlow(AppSettings())
 
     private val testChunks = listOf(
         Chunk(orderIndex = 0, startMs = 0, endMs = 5000, displayText = "First chunk"),
@@ -115,8 +122,11 @@ class PlayerViewModelTest {
         localFileDao = mock()
         recentLearningDao = mock()
         playbackController = mock()
+        settingsRepository = mock()
+        rechunkUseCase = mock()
 
         whenever(playbackController.playbackState).thenReturn(mockPlaybackState)
+        whenever(settingsRepository.settings).thenReturn(mockAppSettings)
     }
 
     @After
@@ -131,7 +141,9 @@ class PlayerViewModelTest {
             podcastDao = podcastDao,
             localFileDao = localFileDao,
             recentLearningDao = recentLearningDao,
-            playbackController = playbackController
+            playbackController = playbackController,
+            settingsRepository = settingsRepository,
+            rechunkUseCase = rechunkUseCase
         )
     }
 
@@ -369,38 +381,36 @@ class PlayerViewModelTest {
     }
 
     @Test
-    fun `toggleRecording toggles recording enabled`() = runTest {
-        mockPlaybackState.value = PlaybackState(settings = LearningSettings(isRecordingEnabled = false))
+    fun `togglePlayMode cycles through play modes`() = runTest {
+        mockPlaybackState.value = PlaybackState(settings = LearningSettings(playMode = PlayMode.NORMAL))
 
         viewModel = createViewModel()
-        viewModel.toggleRecording()
+        viewModel.togglePlayMode()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(playbackController).updateSettings(LearningSettings(isRecordingEnabled = true))
+        verify(playbackController).updateSettings(LearningSettings(playMode = PlayMode.LR))
     }
 
     @Test
-    fun `toggleRecording does nothing in hard mode`() = runTest {
-        mockPlaybackState.value = PlaybackState(settings = LearningSettings(isHardMode = true))
+    fun `togglePlayMode from LR to LRLR`() = runTest {
+        mockPlaybackState.value = PlaybackState(settings = LearningSettings(playMode = PlayMode.LR))
 
         viewModel = createViewModel()
-        viewModel.toggleRecording()
+        viewModel.togglePlayMode()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(playbackController, never()).updateSettings(any())
+        verify(playbackController).updateSettings(LearningSettings(playMode = PlayMode.LRLR))
     }
 
     @Test
-    fun `toggleHardMode toggles hard mode`() = runTest {
-        mockPlaybackState.value = PlaybackState(settings = LearningSettings(isHardMode = false))
+    fun `togglePlayMode from LRLR to NORMAL`() = runTest {
+        mockPlaybackState.value = PlaybackState(settings = LearningSettings(playMode = PlayMode.LRLR))
 
         viewModel = createViewModel()
-        viewModel.toggleHardMode()
+        viewModel.togglePlayMode()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(playbackController).updateSettings(
-            LearningSettings(isHardMode = true, isRecordingEnabled = true)
-        )
+        verify(playbackController).updateSettings(LearningSettings(playMode = PlayMode.NORMAL))
     }
 
     // Playlist Tests

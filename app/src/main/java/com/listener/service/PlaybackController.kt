@@ -170,6 +170,11 @@ class PlaybackController @Inject constructor(
         playbackService?.updateSettings(settings)
     }
 
+    fun updateChunks(chunks: List<Chunk>) {
+        Log.d(TAG, "updateChunks(${chunks.size})")
+        playbackService?.updateChunks(chunks)
+    }
+
     fun stop() {
         Log.d(TAG, "stop()")
         playbackService?.let {

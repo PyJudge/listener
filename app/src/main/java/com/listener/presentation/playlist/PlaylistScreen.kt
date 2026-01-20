@@ -33,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,7 +66,17 @@ fun PlaylistScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Playlist") })
+            TopAppBar(
+                title = {
+                    Text(
+                        text = "Playlist",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
         },
         floatingActionButton = {
             FloatingActionButton(

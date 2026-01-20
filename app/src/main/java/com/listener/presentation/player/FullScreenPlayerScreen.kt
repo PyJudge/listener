@@ -81,6 +81,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
+import com.listener.domain.model.PlayMode
 import com.listener.presentation.theme.ErrorRed
 import com.listener.presentation.theme.ListenerTheme
 import com.listener.presentation.theme.PlayerBackground
@@ -123,8 +124,8 @@ fun FullScreenPlayerScreen(
     var peekingChunkIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
 
-    // Auto-scroll to current chunk
-    LaunchedEffect(playbackState.currentChunkIndex) {
+    // Auto-scroll to current chunk (청크 변경 시 또는 일시정지 시)
+    LaunchedEffect(playbackState.currentChunkIndex, playbackState.isPlaying) {
         if (chunks.isNotEmpty() && playbackState.currentChunkIndex >= 0) {
             val layoutInfo = listState.layoutInfo
             val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -140,13 +141,13 @@ fun FullScreenPlayerScreen(
         peekingChunkIndex = null
     }
 
-    Scaffold(
-        containerColor = SurfaceDarkBg
-    ) { padding ->
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SurfaceDarkBg)
+    ) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
+            modifier = Modifier.fillMaxSize()
         ) {
             // Header
             ModernHeader(
@@ -258,8 +259,7 @@ fun FullScreenPlayerScreen(
                 settings = playbackState.settings,
                 onRepeatChange = { viewModel.setRepeatCount(it) },
                 onGapRatioChange = { viewModel.setGapRatio(it) },
-                onRecordingToggle = { viewModel.toggleRecording() },
-                onHardModeToggle = { viewModel.toggleHardMode() }
+                onPlayModeToggle = { viewModel.togglePlayMode() }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -729,8 +729,7 @@ private fun ModernSettingsBar(
     settings: LearningSettings,
     onRepeatChange: (Int) -> Unit,
     onGapRatioChange: (Float) -> Unit,
-    onRecordingToggle: () -> Unit,
-    onHardModeToggle: () -> Unit
+    onPlayModeToggle: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -738,6 +737,19 @@ private fun ModernSettingsBar(
             .padding(horizontal = 24.dp),
         horizontalArrangement = Arrangement.SpaceEvenly
     ) {
+        // 1. 모드 버튼 (Normal / L/R / L/R/LR)
+        ModernSettingChip(
+            icon = Icons.Rounded.Speed,
+            label = when (settings.playMode) {
+                PlayMode.NORMAL -> "Normal"
+                PlayMode.LR -> "L/R"
+                PlayMode.LRLR -> "L/R/LR"
+            },
+            isActive = settings.playMode != PlayMode.NORMAL,
+            onClick = onPlayModeToggle
+        )
+
+        // 2. 반복 횟수 (항상 활성화)
         ModernSettingChip(
             icon = Icons.Rounded.Repeat,
             label = "x${settings.repeatCount}",
@@ -747,30 +759,17 @@ private fun ModernSettingsBar(
             }
         )
 
+        // 3. 공백 비율 (Normal일 때 비활성화)
         ModernSettingChip(
             icon = Icons.Rounded.Timer,
             label = "+${(settings.gapRatio * 100).toInt()}%",
+            isEnabled = !settings.isNormalMode,
             onClick = {
                 val ratios = listOf(0.0f, 0.2f, 0.4f, 0.6f, 0.8f, 1.0f)
                 val currentIndex = ratios.indexOf(settings.gapRatio)
                 val nextIndex = (currentIndex + 1) % ratios.size
                 onGapRatioChange(ratios[nextIndex])
             }
-        )
-
-        ModernSettingChip(
-            icon = Icons.Rounded.Mic,
-            label = if (settings.isRecordingEnabled) "On" else "Off",
-            isActive = settings.isRecordingEnabled,
-            isEnabled = !settings.isHardMode,
-            onClick = onRecordingToggle
-        )
-
-        ModernSettingChip(
-            icon = Icons.Rounded.Speed,
-            label = if (settings.isHardMode) "Hard" else "Easy",
-            isActive = settings.isHardMode,
-            onClick = onHardModeToggle
         )
     }
 }

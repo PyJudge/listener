@@ -67,13 +67,19 @@ class PlaybackService : MediaSessionService() {
     // Handler-based position monitoring (replaces busy-loop polling)
     private val positionHandler = Handler(Looper.getMainLooper())
     private var currentChunkEndMs: Long = 0L
+    private var isMonitoringActive = false
     private val positionMonitorRunnable = object : Runnable {
         override fun run() {
+            if (!isMonitoringActive) return
+
             val currentPosition = player?.currentPosition ?: 0L
-            if (currentPosition >= currentChunkEndMs && player?.isPlaying == true) {
+            val isPlaying = player?.isPlaying == true
+
+            if (currentPosition >= currentChunkEndMs && isPlaying) {
                 player?.pause()
                 onChunkPlaybackComplete()
-            } else if (player?.isPlaying == true) {
+            } else {
+                // 버퍼링 중이어도 계속 모니터링
                 positionHandler.postDelayed(this, POSITION_CHECK_INTERVAL_MS)
             }
         }
@@ -200,6 +206,20 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    fun updateChunks(newChunks: List<Chunk>) {
+        this.chunks = newChunks
+        // 현재 인덱스가 범위를 벗어나면 조정
+        if (currentChunkIndex >= newChunks.size) {
+            currentChunkIndex = maxOf(0, newChunks.size - 1)
+        }
+        updatePlaybackState {
+            copy(
+                currentChunkIndex = currentChunkIndex,
+                totalChunks = newChunks.size
+            )
+        }
+    }
+
     fun seekToChunk(index: Int) {
         if (index in chunks.indices) {
             currentChunkIndex = index
@@ -231,10 +251,12 @@ class PlaybackService : MediaSessionService() {
 
     private fun startPositionMonitoring() {
         stopPositionMonitoring()
+        isMonitoringActive = true
         positionHandler.postDelayed(positionMonitorRunnable, POSITION_CHECK_INTERVAL_MS)
     }
 
     private fun stopPositionMonitoring() {
+        isMonitoringActive = false
         positionHandler.removeCallbacks(positionMonitorRunnable)
     }
 
@@ -288,8 +310,7 @@ class PlaybackService : MediaSessionService() {
         val chunk = chunks.getOrNull(currentChunkIndex) ?: return
         val gapDuration = (chunk.durationMs * (1 + stateMachine.getSettings().gapRatio)).toLong()
 
-        // ExoPlayer 일시정지 (오디오 포커스 해제)
-        player?.pause()
+        // pause()는 position monitoring에서 이미 호출됨 - 중복 호출 제거
 
         serviceScope.launch {
             val success = recordingManager.startRecording(sourceId, currentChunkIndex)
