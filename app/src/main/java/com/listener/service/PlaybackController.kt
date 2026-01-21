@@ -110,10 +110,10 @@ class PlaybackController @Inject constructor(
         if (playbackService == null) {
             Log.w(TAG, "PlaybackService not connected, binding now...")
             bindService()
-            // Wait a moment and retry
+            // Wait for service binding (increased delay for slow devices)
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 playbackService?.setContent(sourceId, audioUri, chunks, settings, title, subtitle, artworkUrl)
-            }, 500)
+            }, 2000)
             return
         }
 

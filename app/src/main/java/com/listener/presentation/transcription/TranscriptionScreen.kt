@@ -5,11 +5,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Error
@@ -17,7 +15,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,9 +23,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import kotlinx.coroutines.delay
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -54,10 +51,15 @@ fun TranscriptionScreen(
         label = "progress"
     )
 
-    // Navigate when complete
+    // Navigate when complete or error
     LaunchedEffect(uiState.step) {
-        if (uiState.step == TranscriptionStep.COMPLETE) {
+        if (uiState.step == UiTranscriptionStep.COMPLETE) {
             onTranscriptionComplete()
+        }
+        if (uiState.step == UiTranscriptionStep.ERROR) {
+            // 에러 메시지 확인 시간 후 자동 뒤로가기
+            delay(2000)
+            onNavigateBack()
         }
     }
 
@@ -67,12 +69,13 @@ fun TranscriptionScreen(
                 title = {
                     Text(
                         text = when (uiState.step) {
-                            TranscriptionStep.IDLE -> "Ready"
-                            TranscriptionStep.DOWNLOADING -> "Preparing..."
-                            TranscriptionStep.TRANSCRIBING -> "Transcribing"
-                            TranscriptionStep.PROCESSING -> "Processing"
-                            TranscriptionStep.COMPLETE -> "Complete"
-                            TranscriptionStep.ERROR -> "Error"
+                            UiTranscriptionStep.IDLE -> "Ready"
+                            UiTranscriptionStep.DOWNLOADING -> "Downloading..."
+                            UiTranscriptionStep.PREPROCESSING -> "Compressing..."
+                            UiTranscriptionStep.TRANSCRIBING -> "Transcribing"
+                            UiTranscriptionStep.PROCESSING -> "Processing"
+                            UiTranscriptionStep.COMPLETE -> "Complete"
+                            UiTranscriptionStep.ERROR -> "Error"
                         },
                         style = MaterialTheme.typography.titleLarge
                     )
@@ -100,13 +103,13 @@ fun TranscriptionScreen(
             verticalArrangement = Arrangement.Center
         ) {
             when (uiState.step) {
-                TranscriptionStep.ERROR -> {
+                UiTranscriptionStep.ERROR -> {
                     ErrorContent(
                         errorMessage = uiState.errorMessage ?: "Unknown error",
                         onRetry = { viewModel.retry() }
                     )
                 }
-                TranscriptionStep.COMPLETE -> {
+                UiTranscriptionStep.COMPLETE -> {
                     CompleteContent(chunkCount = uiState.chunkCount)
                 }
                 else -> {
@@ -123,7 +126,7 @@ fun TranscriptionScreen(
 @Composable
 private fun ProgressContent(
     progress: Float,
-    step: TranscriptionStep
+    step: UiTranscriptionStep
 ) {
     CircularProgressIndicator(
         progress = { progress },
@@ -143,9 +146,10 @@ private fun ProgressContent(
 
     Text(
         text = when (step) {
-            TranscriptionStep.DOWNLOADING -> "Preparing audio file..."
-            TranscriptionStep.TRANSCRIBING -> "Processing audio with Whisper AI"
-            TranscriptionStep.PROCESSING -> "Creating learning chunks..."
+            UiTranscriptionStep.DOWNLOADING -> "Downloading audio file..."
+            UiTranscriptionStep.PREPROCESSING -> "Compressing audio for upload..."
+            UiTranscriptionStep.TRANSCRIBING -> "Processing audio with Whisper AI"
+            UiTranscriptionStep.PROCESSING -> "Creating learning chunks..."
             else -> "Getting ready..."
         },
         style = MaterialTheme.typography.bodyMedium,
@@ -153,23 +157,14 @@ private fun ProgressContent(
         textAlign = TextAlign.Center
     )
 
-    // Only show linear progress bar for non-downloading steps
-    if (step != TranscriptionStep.DOWNLOADING) {
-        Spacer(modifier = Modifier.height(48.dp))
-
-        LinearProgressIndicator(
-            progress = { progress },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp)
-                .clip(RoundedCornerShape(4.dp)),
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
-        )
-
+    if (step != UiTranscriptionStep.DOWNLOADING) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "This may take a few minutes depending on the audio length",
+            text = when (step) {
+                UiTranscriptionStep.PREPROCESSING -> "Compressing to optimize for transcription..."
+                else -> "This may take a few minutes depending on the audio length"
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center

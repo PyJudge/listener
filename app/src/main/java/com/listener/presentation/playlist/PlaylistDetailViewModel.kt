@@ -10,6 +10,7 @@ import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.dao.TranscriptionDao
 import com.listener.data.local.db.entity.PlaylistEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
+import com.listener.service.RecordingManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,7 +60,8 @@ class PlaylistDetailViewModel @Inject constructor(
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
     private val recentLearningDao: RecentLearningDao,
-    private val transcriptionDao: TranscriptionDao
+    private val transcriptionDao: TranscriptionDao,
+    private val recordingManager: RecordingManager
 ) : ViewModel() {
 
     val playlistId: Long = checkNotNull(savedStateHandle["playlistId"])
@@ -68,6 +70,12 @@ class PlaylistDetailViewModel @Inject constructor(
     val uiState: StateFlow<PlaylistDetailUiState> = _uiState.asStateFlow()
 
     init {
+        loadPlaylistDetail()
+    }
+
+    // H1: Retry function for error recovery
+    fun retry() {
+        _uiState.value = PlaylistDetailUiState.Loading
         loadPlaylistDetail()
     }
 
@@ -177,16 +185,21 @@ class PlaylistDetailViewModel @Inject constructor(
 
     fun removeItem(item: PlaylistDetailItem) {
         viewModelScope.launch {
+            val sourceId = item.playlistItem.sourceId
             playlistDao.deletePlaylistItem(item.playlistItem)
             // Reorder remaining items
             reorderAfterRemoval(item.playlistItem.orderIndex)
+            // H3: Clean up recordings for removed item
+            recordingManager.deleteAllRecordings(sourceId)
         }
     }
 
     private suspend fun reorderAfterRemoval(removedIndex: Int) {
         val items = playlistDao.getPlaylistItemsList(playlistId)
         items.filter { it.orderIndex > removedIndex }.forEach { item ->
-            playlistDao.updateItemOrder(item.id, item.orderIndex - 1)
+            // C5: Prevent negative orderIndex
+            val newIndex = (item.orderIndex - 1).coerceAtLeast(0)
+            playlistDao.updateItemOrder(item.id, newIndex)
         }
     }
 

@@ -181,6 +181,10 @@ fun HomeScreen(
                 selectedSourceTypeForPlaylist = "PODCAST_EPISODE"
                 showPlaylistDialog = true
                 selectedEpisode = null
+            },
+            onAddToQueue = {
+                viewModel.addToTranscriptionQueue(episode.id, "PODCAST_EPISODE")
+                selectedEpisode = null
             }
         )
     }

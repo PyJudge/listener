@@ -1,5 +1,6 @@
 package com.listener.data.repository
 
+import android.util.Log
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
 import com.listener.data.local.db.entity.SubscribedPodcastEntity
@@ -15,6 +16,10 @@ class PodcastRepositoryImpl @Inject constructor(
     private val podcastDao: PodcastDao,
     private val rssParser: RssParser
 ) : PodcastRepository {
+
+    companion object {
+        private const val TAG = "PodcastRepository"
+    }
 
     override fun getSubscriptions(): Flow<List<SubscribedPodcastEntity>> {
         return podcastDao.getAllSubscriptions()
@@ -41,7 +46,9 @@ class PodcastRepositoryImpl @Inject constructor(
     }
 
     override suspend fun refreshEpisodes(feedUrl: String): Result<List<PodcastEpisodeEntity>> {
-        return rssParser.parseFeed(feedUrl).map { feedResult ->
+        return rssParser.parseFeed(feedUrl).onFailure { error ->
+            Log.e(TAG, "RSS parsing failed for $feedUrl: ${error.message}", error)
+        }.map { feedResult ->
             // Update podcast description from RSS channel info
             feedResult.channelDescription?.let { description ->
                 podcastDao.updateDescription(feedUrl, description)

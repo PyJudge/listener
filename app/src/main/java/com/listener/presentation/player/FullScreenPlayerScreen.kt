@@ -124,8 +124,8 @@ fun FullScreenPlayerScreen(
     var peekingChunkIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
 
-    // Auto-scroll to current chunk (청크 변경 시 또는 일시정지 시)
-    LaunchedEffect(playbackState.currentChunkIndex, playbackState.isPlaying) {
+    // Auto-scroll to current chunk (청크 변경, 일시정지, 또는 숨김 모드 전환 시)
+    LaunchedEffect(playbackState.currentChunkIndex, playbackState.isPlaying, isBlindMode) {
         if (chunks.isNotEmpty() && playbackState.currentChunkIndex >= 0) {
             val layoutInfo = listState.layoutInfo
             val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
@@ -173,12 +173,19 @@ fun FullScreenPlayerScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            detectHorizontalDragGestures { _, dragAmount ->
-                                when {
-                                    dragAmount < -50 -> viewModel.nextChunk()
-                                    dragAmount > 50 -> viewModel.previousChunk()
+                            var totalDrag = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { totalDrag = 0f },
+                                onDragEnd = {
+                                    when {
+                                        totalDrag < -80 -> viewModel.nextChunk()
+                                        totalDrag > 80 -> viewModel.previousChunk()
+                                    }
+                                },
+                                onHorizontalDrag = { _, dragAmount ->
+                                    totalDrag += dragAmount
                                 }
-                            }
+                            )
                         }
                 ) {
                     itemsIndexed(
@@ -236,7 +243,7 @@ fun FullScreenPlayerScreen(
             // State indicator
             ModernStateIndicator(
                 state = playbackState.learningState,
-                modifier = Modifier.padding(vertical = 8.dp)
+                modifier = Modifier.padding(vertical = 4.dp)
             )
 
             // Controls
@@ -490,7 +497,7 @@ private fun ModernSeekBar(
     val density = LocalDensity.current
     var isDragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
-    var trackWidth by remember { mutableStateOf(0f) }
+    var trackWidth by remember { mutableFloatStateOf(0f) }
 
     val progress = if (isDragging) {
         dragProgress

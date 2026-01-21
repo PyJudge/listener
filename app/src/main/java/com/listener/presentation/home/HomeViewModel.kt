@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.listener.data.local.db.dao.PlaylistDao
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
+import com.listener.service.TranscriptionQueueManager
 import com.listener.data.local.db.entity.PlaylistEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
@@ -31,7 +32,8 @@ data class HomeUiState(
 class HomeViewModel @Inject constructor(
     private val recentLearningDao: RecentLearningDao,
     private val podcastDao: PodcastDao,
-    private val playlistDao: PlaylistDao
+    private val playlistDao: PlaylistDao,
+    private val transcriptionQueueManager: TranscriptionQueueManager
 ) : ViewModel() {
 
     fun markEpisodeAsPlayed(episodeId: String) {
@@ -122,6 +124,12 @@ class HomeViewModel @Inject constructor(
             )
             playlistDao.insertPlaylistItem(item)
             dismissCreatePlaylistDialog()
+        }
+    }
+
+    fun addToTranscriptionQueue(sourceId: String, sourceType: String) {
+        viewModelScope.launch {
+            transcriptionQueueManager.addToQueue(sourceId, sourceType)
         }
     }
 }

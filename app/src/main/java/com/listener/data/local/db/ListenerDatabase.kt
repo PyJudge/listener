@@ -11,6 +11,7 @@ import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.dao.RecordingDao
 import com.listener.data.local.db.dao.TranscriptionDao
+import com.listener.data.local.db.dao.TranscriptionQueueDao
 import com.listener.data.local.db.entity.ChunkEntity
 import com.listener.data.local.db.entity.ChunkSettingsEntity
 import com.listener.data.local.db.entity.FolderEntity
@@ -22,6 +23,7 @@ import com.listener.data.local.db.entity.PlaylistItemEntity
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
 import com.listener.data.local.db.entity.RecentLearningEntity
 import com.listener.data.local.db.entity.SubscribedPodcastEntity
+import com.listener.data.local.db.entity.TranscriptionQueueEntity
 import com.listener.data.local.db.entity.TranscriptionResultEntity
 import com.listener.data.local.db.entity.UserRecordingEntity
 
@@ -39,9 +41,10 @@ import com.listener.data.local.db.entity.UserRecordingEntity
         PlaylistItemEntity::class,
         RecentLearningEntity::class,
         FolderEntity::class,
-        FolderItemEntity::class
+        FolderItemEntity::class,
+        TranscriptionQueueEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class ListenerDatabase : RoomDatabase() {
@@ -54,4 +57,5 @@ abstract class ListenerDatabase : RoomDatabase() {
     abstract fun playlistDao(): PlaylistDao
     abstract fun recentLearningDao(): RecentLearningDao
     abstract fun folderDao(): FolderDao
+    abstract fun transcriptionQueueDao(): TranscriptionQueueDao
 }

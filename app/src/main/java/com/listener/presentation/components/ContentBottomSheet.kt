@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.PlayArrow
 import androidx.compose.material.icons.automirrored.outlined.PlaylistAdd
+import androidx.compose.material.icons.outlined.Queue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -45,6 +46,7 @@ fun ContentBottomSheet(
     onDismiss: () -> Unit,
     onStartLearning: () -> Unit,
     onAddToPlaylist: () -> Unit,
+    onAddToQueue: (() -> Unit)? = null,
     sheetState: SheetState = rememberModalBottomSheetState()
 ) {
     ModalBottomSheet(
@@ -60,7 +62,8 @@ fun ContentBottomSheet(
             durationMs = durationMs,
             pubDate = pubDate,
             onStartLearning = onStartLearning,
-            onAddToPlaylist = onAddToPlaylist
+            onAddToPlaylist = onAddToPlaylist,
+            onAddToQueue = onAddToQueue
         )
     }
 }
@@ -73,7 +76,8 @@ private fun ContentBottomSheetContent(
     durationMs: Long?,
     pubDate: Long?,
     onStartLearning: () -> Unit,
-    onAddToPlaylist: () -> Unit
+    onAddToPlaylist: () -> Unit,
+    onAddToQueue: (() -> Unit)? = null
 ) {
     Column(
         modifier = Modifier
@@ -155,6 +159,18 @@ private fun ContentBottomSheetContent(
             style = ButtonStyle.Outline,
             modifier = Modifier.fillMaxWidth()
         )
+
+        if (onAddToQueue != null) {
+            Spacer(modifier = Modifier.height(12.dp))
+
+            ListenerButton(
+                text = "전사 대기열에 추가",
+                onClick = onAddToQueue,
+                icon = Icons.Outlined.Queue,
+                style = ButtonStyle.Outline,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 

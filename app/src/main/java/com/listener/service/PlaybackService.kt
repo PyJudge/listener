@@ -13,6 +13,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.listener.data.local.db.dao.RecentLearningDao
+import com.listener.data.local.db.entity.RecentLearningEntity
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
@@ -38,6 +40,9 @@ class PlaybackService : MediaSessionService() {
 
     @Inject
     lateinit var recordingManager: RecordingManager
+
+    @Inject
+    lateinit var recentLearningDao: RecentLearningDao
 
     private var mediaSession: MediaSession? = null
     private var player: ExoPlayer? = null
@@ -187,6 +192,7 @@ class PlaybackService : MediaSessionService() {
                     learningState = stateMachine.state.value
                 )
             }
+            saveProgress()
         }
     }
 
@@ -203,6 +209,7 @@ class PlaybackService : MediaSessionService() {
                     learningState = stateMachine.state.value
                 )
             }
+            saveProgress()
         }
     }
 
@@ -233,6 +240,7 @@ class PlaybackService : MediaSessionService() {
                     learningState = stateMachine.state.value
                 )
             }
+            saveProgress()
         }
     }
 
@@ -273,10 +281,12 @@ class PlaybackService : MediaSessionService() {
                     stateMachine.play()
                     playCurrentChunk()
                     updatePlaybackState { copy(currentChunkIndex = newIndex) }
+                    saveProgress()
                 } else {
                     // End of content
                     stateMachine.stop()
                     updatePlaybackState { copy(isPlaying = false, learningState = LearningState.Idle) }
+                    saveProgress()
                 }
             }
             else -> {}
@@ -355,6 +365,7 @@ class PlaybackService : MediaSessionService() {
         override fun onPlaybackStateChanged(playbackState: Int) {
             when (playbackState) {
                 Player.STATE_IDLE -> updatePlaybackState { copy(isPlaying = false) }
+                Player.STATE_BUFFERING -> { /* buffering */ }
                 Player.STATE_READY -> { /* ready */ }
                 Player.STATE_ENDED -> {
                     stopPositionMonitoring()
@@ -374,6 +385,26 @@ class PlaybackService : MediaSessionService() {
 
     private fun updatePlaybackState(update: PlaybackState.() -> PlaybackState) {
         _playbackState.value = _playbackState.value.update()
+    }
+
+    private fun saveProgress() {
+        val state = _playbackState.value
+        if (state.sourceId.isEmpty()) return
+
+        serviceScope.launch {
+            recentLearningDao.upsertRecentLearning(
+                RecentLearningEntity(
+                    sourceId = state.sourceId,
+                    sourceType = "PODCAST_EPISODE",
+                    title = state.title,
+                    subtitle = state.subtitle,
+                    currentChunkIndex = state.currentChunkIndex,
+                    totalChunks = state.totalChunks,
+                    thumbnailUrl = state.artworkUrl,
+                    lastAccessedAt = System.currentTimeMillis()
+                )
+            )
+        }
     }
 
     private fun createNotificationChannel() {

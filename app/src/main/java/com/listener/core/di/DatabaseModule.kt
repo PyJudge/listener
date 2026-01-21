@@ -14,6 +14,7 @@ import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.dao.RecordingDao
 import com.listener.data.local.db.dao.TranscriptionDao
+import com.listener.data.local.db.dao.TranscriptionQueueDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -62,6 +63,27 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("""
+                CREATE TABLE IF NOT EXISTS transcription_queue (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    sourceId TEXT NOT NULL,
+                    sourceType TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    subtitle TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'PENDING',
+                    progress REAL NOT NULL DEFAULT 0,
+                    errorMessage TEXT,
+                    orderIndex INTEGER NOT NULL,
+                    addedAt INTEGER NOT NULL,
+                    startedAt INTEGER,
+                    completedAt INTEGER
+                )
+            """)
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): ListenerDatabase {
@@ -70,7 +92,7 @@ object DatabaseModule {
             ListenerDatabase::class.java,
             "listener_database"
         )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+            .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
             .build()
     }
 
@@ -100,4 +122,7 @@ object DatabaseModule {
 
     @Provides
     fun provideFolderDao(database: ListenerDatabase): FolderDao = database.folderDao()
+
+    @Provides
+    fun provideTranscriptionQueueDao(database: ListenerDatabase): TranscriptionQueueDao = database.transcriptionQueueDao()
 }

@@ -272,8 +272,8 @@ private fun PlaylistDetailContent(
     onMoveUp: (Int) -> Unit,
     onMoveDown: (Int) -> Unit,
     onRemoveItem: (PlaylistDetailItem) -> Unit,
-    onReorder: (Int, Int) -> Unit = { _, _ -> },
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onReorder: (Int, Int) -> Unit = { _, _ -> }
 ) {
     val listState = rememberLazyListState()
     var draggingItemIndex by remember { mutableIntStateOf(-1) }

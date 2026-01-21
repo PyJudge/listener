@@ -4,6 +4,7 @@ import app.cash.turbine.test
 import com.listener.data.local.db.dao.PlaylistDao
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
+import com.listener.service.TranscriptionQueueManager
 import com.listener.data.local.db.entity.PlaylistEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
@@ -36,6 +37,7 @@ class HomeViewModelTest {
     private lateinit var recentLearningDao: RecentLearningDao
     private lateinit var podcastDao: PodcastDao
     private lateinit var playlistDao: PlaylistDao
+    private lateinit var transcriptionQueueManager: TranscriptionQueueManager
     private lateinit var viewModel: HomeViewModel
 
     private val mockRecentLearnings = listOf(
@@ -92,6 +94,7 @@ class HomeViewModelTest {
         recentLearningDao = mock()
         podcastDao = mock()
         playlistDao = mock()
+        transcriptionQueueManager = mock()
 
         whenever(recentLearningDao.getRecentLearnings(any())).thenReturn(flowOf(mockRecentLearnings))
         whenever(podcastDao.getNewEpisodes(any(), any())).thenReturn(flowOf(mockEpisodes))
@@ -109,7 +112,7 @@ class HomeViewModelTest {
 
     @Test
     fun `initial state is loading`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
 
         viewModel.uiState.test {
             val initialState = awaitItem()
@@ -120,7 +123,7 @@ class HomeViewModelTest {
 
     @Test
     fun `loads recent learnings successfully`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
@@ -133,7 +136,7 @@ class HomeViewModelTest {
 
     @Test
     fun `loads new episodes successfully`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
@@ -146,7 +149,7 @@ class HomeViewModelTest {
 
     @Test
     fun `hasSubscriptions is true when subscriptions exist`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.uiState.test {
@@ -158,7 +161,7 @@ class HomeViewModelTest {
 
     @Test
     fun `showCreatePlaylistDialog updates state`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.showCreatePlaylistDialog()
@@ -173,7 +176,7 @@ class HomeViewModelTest {
 
     @Test
     fun `dismissCreatePlaylistDialog updates state`() = runTest {
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.showCreatePlaylistDialog()
@@ -193,7 +196,7 @@ class HomeViewModelTest {
     fun `addToPlaylist calls dao with correct parameters`() = runTest {
         whenever(playlistDao.getMaxOrderIndex(any())).thenReturn(2)
 
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.addToPlaylist(
@@ -210,7 +213,7 @@ class HomeViewModelTest {
     fun `createPlaylistAndAddItem creates playlist and adds item`() = runTest {
         whenever(playlistDao.insertPlaylist(any())).thenReturn(1L)
 
-        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao)
+        viewModel = HomeViewModel(recentLearningDao, podcastDao, playlistDao, transcriptionQueueManager)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.showCreatePlaylistDialog()

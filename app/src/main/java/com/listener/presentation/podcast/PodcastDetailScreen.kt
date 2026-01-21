@@ -239,12 +239,7 @@ private fun SuccessContent(
         onRefresh = onRefresh,
         modifier = modifier.fillMaxSize()
     ) {
-        if (episodes.isEmpty() && isRefreshing) {
-            LoadingState(
-                message = "Loading episodes...",
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (episodes.isEmpty()) {
+        if (episodes.isEmpty()) {
             EmptyState(
                 icon = Icons.Outlined.Podcasts,
                 title = "No Episodes",
@@ -394,14 +389,24 @@ private fun EpisodeItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    ListenerCard(
-        title = episode.title,
-        subtitle = buildSubtitle(episode),
-        imageUrl = podcastArtworkUrl,
-        badge = if (episode.isNew) "NEW" else null,
-        onClick = onClick,
-        modifier = modifier
-    )
+    Box(modifier = modifier) {
+        ListenerCard(
+            title = episode.title,
+            subtitle = buildSubtitle(episode),
+            imageUrl = podcastArtworkUrl,
+            onClick = onClick
+        )
+        if (episode.isNew) {
+            Text(
+                text = "new",
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 12.dp, bottom = 8.dp),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 @Composable

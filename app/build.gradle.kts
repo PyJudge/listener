@@ -58,6 +58,17 @@ android {
             isReturnDefaultValues = true
         }
     }
+
+    lint {
+        // font_certs.xml의 base64 인증서 문자열 오탐 방지
+        disable += "Typos"
+        // 라이브러리 내부 lint 버전 불일치 무시
+        disable += "ObsoleteLintCustomCheck"
+        // AGP 8.7.3 ↔ Gradle 8.9 호환성으로 인해 업그레이드 불가
+        disable += "GradleDependency"
+        disable += "AndroidGradlePluginVersion"
+        disable += "OldTargetApi"
+    }
 }
 
 dependencies {
@@ -94,6 +105,9 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.session)
     implementation(libs.media3.ui)
+    implementation(libs.media3.transformer)
+    implementation(libs.media3.effect)
+    implementation(libs.media3.common)
 
     // Network
     implementation(libs.retrofit)

@@ -80,6 +80,8 @@ sealed class Screen(
         fun createRoute(sourceId: String) = "transcription/$sourceId"
     }
 
+    data object TranscriptionQueue : Screen(route = "transcription_queue")
+
     data object FullScreenPlayer : Screen(route = "player/{sourceId}") {
         fun createRoute(sourceId: String) = "player/$sourceId"
     }

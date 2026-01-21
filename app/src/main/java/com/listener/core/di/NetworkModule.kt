@@ -13,6 +13,8 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import okhttp3.Dns
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import javax.inject.Named
 import javax.inject.Singleton
@@ -33,12 +35,13 @@ object NetworkModule {
     fun provideOkHttpClient(): OkHttpClient {
         return OkHttpClient.Builder()
             .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(300, TimeUnit.SECONDS)
-            .writeTimeout(300, TimeUnit.SECONDS)
+            .readTimeout(180, TimeUnit.SECONDS)  // 3분
+            .writeTimeout(180, TimeUnit.SECONDS) // 3분
             .apply {
                 if (BuildConfig.DEBUG) {
                     addInterceptor(HttpLoggingInterceptor().apply {
-                        level = HttpLoggingInterceptor.Level.BODY
+                        // HEADERS only - BODY causes OOM with large audio files
+                        level = HttpLoggingInterceptor.Level.HEADERS
                     })
                 }
             }

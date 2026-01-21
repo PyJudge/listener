@@ -22,6 +22,7 @@ import com.listener.presentation.podcast.PodcastDetailScreen
 import com.listener.presentation.podcast.PodcastScreen
 import com.listener.presentation.podcast.PodcastSearchScreen
 import com.listener.presentation.settings.SettingsScreen
+import com.listener.presentation.transcription.TranscriptionQueueScreen
 import com.listener.presentation.transcription.TranscriptionScreen
 
 @Composable
@@ -58,8 +59,24 @@ fun ListenerNavHost(
                 onNavigateToPlayer = { sourceId ->
                     navController.navigate(Screen.FullScreenPlayer.createRoute(sourceId))
                 },
-                onNavigateToPodcast = { navController.navigate(Screen.Podcast.route) },
-                onNavigateToContinueLearning = { navController.navigate(Screen.Playlist.route) },
+                onNavigateToPodcast = {
+                    navController.navigate(Screen.Podcast.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
+                onNavigateToContinueLearning = {
+                    navController.navigate(Screen.Playlist.route) {
+                        popUpTo(navController.graph.startDestinationId) {
+                            saveState = true
+                        }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                },
                 onNavigateToTranscription = { sourceId ->
                     navController.navigate(Screen.Transcription.createRoute(sourceId))
                 }
@@ -175,6 +192,12 @@ fun ListenerNavHost(
                     navController.popBackStack()
                     onNavigateToPlayer(sourceId)
                 }
+            )
+        }
+
+        composable(Screen.TranscriptionQueue.route) {
+            TranscriptionQueueScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

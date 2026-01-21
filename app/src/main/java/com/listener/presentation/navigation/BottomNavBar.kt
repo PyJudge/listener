@@ -30,7 +30,7 @@ fun ListenerBottomBar(
         tonalElevation = 0.dp
     ) {
         Screen.bottomNavItems.forEach { screen ->
-            val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+            val selected = currentDestination?.hierarchy?.any { it.route?.startsWith(screen.route) == true } == true
 
             NavigationBarItem(
                 selected = selected,
