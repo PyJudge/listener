@@ -253,4 +253,33 @@ class SentenceSplitterTest {
         assertEquals("Hello world.", result[0])
         assertEquals("Goodbye world.", result[1])
     }
+
+    // ===== 버그 A 수정 테스트: remaining을 새 문장으로 추가 (ankigpt 방식) =====
+
+    @Test
+    fun `remaining text should be new sentence not appended`() {
+        // 버그 A: "Hello. Test" → 기존: ["Hello. Test"], 수정 후: ["Hello.", "Test"]
+        val result = splitter.split("Hello. Test", sentenceOnly = true)
+        assertEquals(2, result.size)
+        assertEquals("Hello.", result[0])
+        assertEquals("Test", result[1])
+    }
+
+    @Test
+    fun `remaining text without punctuation should be separate`() {
+        val result = splitter.split("First sentence. Second sentence. Remaining part", sentenceOnly = true)
+        assertEquals(3, result.size)
+        assertEquals("First sentence.", result[0])
+        assertEquals("Second sentence.", result[1])
+        assertEquals("Remaining part", result[2])
+    }
+
+    @Test
+    fun `multiple sentences with remaining`() {
+        val result = splitter.split("One. Two. Three", sentenceOnly = true)
+        assertEquals(3, result.size)
+        assertEquals("One.", result[0])
+        assertEquals("Two.", result[1])
+        assertEquals("Three", result[2])
+    }
 }

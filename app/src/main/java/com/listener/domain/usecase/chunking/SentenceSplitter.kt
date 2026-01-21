@@ -61,14 +61,10 @@ class SentenceSplitter @Inject constructor() {
             i++
         }
 
-        // Add remaining text if any
+        // Add remaining text as new sentence (ankigpt 방식)
         val remaining = current.toString().trim()
         if (remaining.isNotEmpty()) {
-            if (sentences.isNotEmpty()) {
-                sentences[sentences.lastIndex] = sentences.last() + " " + remaining
-            } else {
-                sentences.add(remaining)
-            }
+            sentences.add(remaining)
         }
 
         return sentences
