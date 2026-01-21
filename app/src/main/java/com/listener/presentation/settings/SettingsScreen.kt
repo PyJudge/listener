@@ -148,6 +148,7 @@ fun SettingsScreen(
             item {
                 SettingsSliderItem(
                     title = "Minimum Chunk Duration",
+                    subtitle = "앱 재시작 시 적용",
                     value = settings.minChunkMs / 1000f,
                     valueRange = 0.5f..3.0f,
                     steps = 4,
@@ -159,7 +160,7 @@ fun SettingsScreen(
             item {
                 SettingsSwitchItem(
                     title = "Sentence Unit Only",
-                    subtitle = "Split only at sentence endings (. ! ?)",
+                    subtitle = "Split at . ! ? (앱 재시작 시 적용)",
                     checked = settings.sentenceOnly,
                     onCheckedChange = { viewModel.setSentenceOnly(it) }
                 )
@@ -367,7 +368,8 @@ private fun SettingsSliderItem(
     valueRange: ClosedFloatingPointRange<Float>,
     steps: Int,
     valueLabel: String,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    subtitle: String? = null
 ) {
     val density = LocalDensity.current
     var isDragging by remember { mutableStateOf(false) }
@@ -386,10 +388,19 @@ private fun SettingsSliderItem(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Column {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
             Text(
                 text = valueLabel,
                 style = MaterialTheme.typography.bodyMedium,

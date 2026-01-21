@@ -8,17 +8,12 @@ import com.listener.data.local.db.dao.PlaylistDao
 import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.entity.PlaylistItemEntity
-import com.listener.data.repository.SettingsRepository
 import com.listener.domain.model.Chunk
-import com.listener.domain.model.ChunkSettings
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.PlaybackState
 import com.listener.domain.model.PlayMode
 import com.listener.domain.repository.TranscriptionRepository
-import com.listener.domain.usecase.RechunkResult
-import com.listener.domain.usecase.RechunkUseCase
 import com.listener.service.PlaybackController
-import kotlinx.coroutines.flow.first
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +22,10 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class PlayerUiState(
+    val error: String? = null
+)
+
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
     private val transcriptionRepository: TranscriptionRepository,
@@ -34,9 +33,7 @@ class PlayerViewModel @Inject constructor(
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
     private val recentLearningDao: RecentLearningDao,
-    private val playbackController: PlaybackController,
-    private val settingsRepository: SettingsRepository,
-    private val rechunkUseCase: RechunkUseCase
+    private val playbackController: PlaybackController
 ) : ViewModel() {
 
     companion object {
@@ -45,6 +42,10 @@ class PlayerViewModel @Inject constructor(
 
     // Use playback state from controller
     val playbackState: StateFlow<PlaybackState> = playbackController.playbackState
+
+    // UI state for errors
+    private val _uiState = MutableStateFlow(PlayerUiState())
+    val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private val _chunks = MutableStateFlow<List<Chunk>>(emptyList())
     val chunks: StateFlow<List<Chunk>> = _chunks.asStateFlow()
@@ -68,57 +69,9 @@ class PlayerViewModel @Inject constructor(
     private var currentSubtitle: String = ""
     private var currentArtworkUrl: String? = null
 
-    // 이전 chunk 설정 저장 (변경 감지용)
-    private var lastChunkSettings: ChunkSettings? = null
-
     init {
         // Bind to PlaybackService when ViewModel is created
         playbackController.bindService()
-
-        // 설정 변경 감지 - chunk 관련 설정이 바뀌면 rechunk 수행
-        viewModelScope.launch {
-            settingsRepository.settings.collect { appSettings ->
-                val newChunkSettings = ChunkSettings(
-                    sentenceOnly = appSettings.sentenceOnly,
-                    minChunkMs = appSettings.minChunkMs
-                )
-
-                // 이전 설정과 다르고, 현재 로드된 콘텐츠가 있으면 rechunk
-                if (lastChunkSettings != null &&
-                    lastChunkSettings != newChunkSettings &&
-                    currentSourceId.isNotEmpty()
-                ) {
-                    Log.d(TAG, "Settings changed, stopping and rechunking: $lastChunkSettings -> $newChunkSettings")
-                    // 재생 정지
-                    playbackController.stop()
-                    // rechunk 수행
-                    performRechunk(currentSourceId, newChunkSettings)
-                }
-                lastChunkSettings = newChunkSettings
-            }
-        }
-    }
-
-    private suspend fun performRechunk(sourceId: String, chunkSettings: ChunkSettings) {
-        when (val result = rechunkUseCase.execute(sourceId, chunkSettings, deleteRecordings = true)) {
-            is RechunkResult.Success -> {
-                _chunks.value = result.chunks
-                Log.d(TAG, "Rechunk successful: ${result.chunks.size} chunks")
-            }
-            is RechunkResult.RecordingsExist -> {
-                // 녹음이 있어도 강제로 rechunk
-                when (val retryResult = rechunkUseCase.execute(sourceId, chunkSettings, deleteRecordings = true)) {
-                    is RechunkResult.Success -> {
-                        _chunks.value = retryResult.chunks
-                        Log.d(TAG, "Rechunk successful after retry: ${retryResult.chunks.size} chunks")
-                    }
-                    else -> Log.e(TAG, "Rechunk failed after retry")
-                }
-            }
-            is RechunkResult.Error -> {
-                Log.e(TAG, "Rechunk error: ${result.message}")
-            }
-        }
     }
 
     override fun onCleared() {
@@ -140,35 +93,8 @@ class PlayerViewModel @Inject constructor(
             currentSubtitle = subtitle
             currentArtworkUrl = artworkUrl
 
-            // 현재 앱 설정 가져오기
-            val appSettings = settingsRepository.settings.first()
-            val currentChunkSettings = ChunkSettings(
-                sentenceOnly = appSettings.sentenceOnly,
-                minChunkMs = appSettings.minChunkMs
-            )
-
-            // 저장된 청크 설정과 비교하여 다르면 rechunk 수행
-            val savedSettings = transcriptionRepository.getChunkSettings(sourceId)
-            val loadedChunks = if (savedSettings != null && savedSettings != currentChunkSettings) {
-                Log.d(TAG, "Settings changed, rechunking: saved=$savedSettings, current=$currentChunkSettings")
-                when (val result = rechunkUseCase.execute(sourceId, currentChunkSettings, deleteRecordings = true)) {
-                    is RechunkResult.Success -> result.chunks
-                    is RechunkResult.RecordingsExist -> {
-                        Log.d(TAG, "Recordings exist, rechunking anyway")
-                        when (val retryResult = rechunkUseCase.execute(sourceId, currentChunkSettings, deleteRecordings = true)) {
-                            is RechunkResult.Success -> retryResult.chunks
-                            else -> transcriptionRepository.getChunks(sourceId)
-                        }
-                    }
-                    is RechunkResult.Error -> {
-                        Log.e(TAG, "Rechunk error: ${result.message}")
-                        transcriptionRepository.getChunks(sourceId)
-                    }
-                }
-            } else {
-                transcriptionRepository.getChunks(sourceId)
-            }
-
+            // 앱 시작 시 이미 rechunk되었으므로 단순히 로드만 함
+            val loadedChunks = transcriptionRepository.getChunks(sourceId)
             _chunks.value = loadedChunks
             Log.d(TAG, "Loaded ${loadedChunks.size} chunks")
 
@@ -177,7 +103,6 @@ class PlayerViewModel @Inject constructor(
             Log.d(TAG, "Audio file path: $audioFilePath")
 
             if (audioFilePath != null && loadedChunks.isNotEmpty()) {
-                // Set up playback content - 기존 설정 유지 (플레이리스트 전환 시 초기화 방지)
                 val currentSettings = playbackState.value.settings
                 playbackController.setContent(
                     sourceId = sourceId,
@@ -208,24 +133,11 @@ class PlayerViewModel @Inject constructor(
     fun loadBySourceId(sourceId: String) {
         Log.d(TAG, "loadBySourceId: $sourceId")
 
-        // 이미 같은 sourceId가 재생 중이면 설정 변경만 확인
+        // 이미 같은 sourceId가 재생 중이면 스킵
         if (playbackController.playbackState.value.sourceId == sourceId) {
-            Log.d(TAG, "Same sourceId already playing, checking settings change")
-            viewModelScope.launch {
-                // 현재 앱 설정 가져오기
-                val appSettings = settingsRepository.settings.first()
-                val currentChunkSettings = ChunkSettings(
-                    sentenceOnly = appSettings.sentenceOnly,
-                    minChunkMs = appSettings.minChunkMs
-                )
-
-                // 저장된 청크 설정과 비교
-                val savedSettings = transcriptionRepository.getChunkSettings(sourceId)
-                if (savedSettings != null && savedSettings != currentChunkSettings) {
-                    Log.d(TAG, "Settings changed, rechunking: saved=$savedSettings, current=$currentChunkSettings")
-                    performRechunk(sourceId, currentChunkSettings)
-                } else if (_chunks.value.isEmpty()) {
-                    // chunks가 비어있을 때만 로드
+            Log.d(TAG, "Same sourceId already playing, skipping")
+            if (_chunks.value.isEmpty()) {
+                viewModelScope.launch {
                     _chunks.value = transcriptionRepository.getChunks(sourceId)
                 }
             }
@@ -236,13 +148,18 @@ class PlayerViewModel @Inject constructor(
             // First try to find in recent learnings for quick metadata
             val recentLearning = recentLearningDao.getRecentLearning(sourceId)
             if (recentLearning != null) {
-                Log.d(TAG, "Found in recent learnings: ${recentLearning.title}")
+                Log.d(TAG, "Found in recent learnings: ${recentLearning.title}, chunkIndex=${recentLearning.currentChunkIndex}")
                 loadContent(
                     sourceId = recentLearning.sourceId,
                     title = recentLearning.title,
                     subtitle = recentLearning.subtitle,
                     artworkUrl = recentLearning.thumbnailUrl
                 )
+                // 저장된 위치로 복원
+                if (recentLearning.currentChunkIndex > 0) {
+                    kotlinx.coroutines.delay(500)
+                    seekToChunk(recentLearning.currentChunkIndex)
+                }
                 return@launch
             }
 
@@ -357,6 +274,10 @@ class PlayerViewModel @Inject constructor(
         _playlistId.value = null
         _playlistItems.value = emptyList()
         _currentPlaylistItemIndex.value = 0
+    }
+
+    fun clearError() {
+        _uiState.update { it.copy(error = null) }
     }
 
     /**

@@ -42,6 +42,7 @@ class SettingsRepository @Inject constructor(
         val MIN_CHUNK_MS = longPreferencesKey("min_chunk_ms")
         val SENTENCE_ONLY = booleanPreferencesKey("sentence_only")
         val OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
+        val PENDING_RECHUNK = booleanPreferencesKey("pending_rechunk")
     }
 
     val settings: Flow<AppSettings> = dataStore.data
@@ -57,6 +58,10 @@ class SettingsRepository @Inject constructor(
                 openAiApiKey = prefs[Keys.OPENAI_API_KEY] ?: AppSettings().openAiApiKey
             )
         }
+
+    val pendingRechunk: Flow<Boolean> = dataStore.data
+        .catch { emit(emptyPreferences()) }
+        .map { prefs -> prefs[Keys.PENDING_RECHUNK] ?: false }
 
     suspend fun setDefaultRepeatCount(count: Int) {
         dataStore.edit { it[Keys.DEFAULT_REPEAT_COUNT] = count.coerceIn(1, 5) }
@@ -75,14 +80,24 @@ class SettingsRepository @Inject constructor(
     }
 
     suspend fun setMinChunkMs(ms: Long) {
-        dataStore.edit { it[Keys.MIN_CHUNK_MS] = ms.coerceIn(500L, 3000L) }
+        dataStore.edit {
+            it[Keys.MIN_CHUNK_MS] = ms.coerceIn(500L, 3000L)
+            it[Keys.PENDING_RECHUNK] = true
+        }
     }
 
     suspend fun setSentenceOnly(enabled: Boolean) {
-        dataStore.edit { it[Keys.SENTENCE_ONLY] = enabled }
+        dataStore.edit {
+            it[Keys.SENTENCE_ONLY] = enabled
+            it[Keys.PENDING_RECHUNK] = true
+        }
     }
 
     suspend fun setOpenAiApiKey(key: String) {
         dataStore.edit { it[Keys.OPENAI_API_KEY] = key }
+    }
+
+    suspend fun setPendingRechunk(pending: Boolean) {
+        dataStore.edit { it[Keys.PENDING_RECHUNK] = pending }
     }
 }
