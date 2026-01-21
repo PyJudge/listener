@@ -239,7 +239,14 @@ private fun SuccessContent(
         onRefresh = onRefresh,
         modifier = modifier.fillMaxSize()
     ) {
-        if (episodes.isEmpty()) {
+        if (isRefreshing && episodes.isEmpty()) {
+            // 첫 로딩 중 - 로딩 표시
+            LoadingState(
+                message = "Loading episodes...",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (episodes.isEmpty()) {
+            // 로딩 완료 후 에피소드 없음
             EmptyState(
                 icon = Icons.Outlined.Podcasts,
                 title = "No Episodes",
