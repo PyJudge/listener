@@ -45,4 +45,10 @@ interface TranscriptionDao {
 
     @Query("SELECT COUNT(*) FROM transcription_results")
     fun getTranscribedCount(): Flow<Int>
+
+    @Query("DELETE FROM transcription_results")
+    suspend fun deleteAllTranscriptions()
+
+    @Query("DELETE FROM chunks")
+    suspend fun deleteAllChunks()
 }

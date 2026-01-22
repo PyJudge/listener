@@ -59,4 +59,7 @@ interface TranscriptionQueueDao {
 
     @Query("UPDATE transcription_queue SET orderIndex = :newIndex WHERE id = :id")
     suspend fun updateOrderIndex(id: Long, newIndex: Int)
+
+    @Query("DELETE FROM transcription_queue")
+    suspend fun deleteAll()
 }

@@ -55,4 +55,7 @@ interface PodcastDao {
 
     @Query("UPDATE subscribed_podcasts SET description = :description WHERE feedUrl = :feedUrl")
     suspend fun updateDescription(feedUrl: String, description: String?)
+
+    @Query("DELETE FROM podcast_episodes")
+    suspend fun deleteAllEpisodes()
 }

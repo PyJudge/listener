@@ -20,4 +20,7 @@ interface RecentLearningDao {
 
     @Query("DELETE FROM recent_learnings WHERE sourceId = :sourceId")
     suspend fun deleteRecentLearning(sourceId: String)
+
+    @Query("DELETE FROM recent_learnings")
+    suspend fun deleteAllRecentLearnings()
 }

@@ -150,8 +150,8 @@ fun SettingsScreen(
                     title = "Minimum Chunk Duration",
                     subtitle = "앱 재시작 시 적용",
                     value = settings.minChunkMs / 1000f,
-                    valueRange = 0.5f..3.0f,
-                    steps = 4,
+                    valueRange = 0.5f..5.0f,
+                    steps = 8,
                     valueLabel = "${settings.minChunkMs / 1000.0}s",
                     onValueChange = { viewModel.setMinChunkDuration(it) }
                 )
@@ -159,8 +159,8 @@ fun SettingsScreen(
 
             item {
                 SettingsSwitchItem(
-                    title = "Sentence Unit Only",
-                    subtitle = "Split at . ! ? (앱 재시작 시 적용)",
+                    title = "Split Only by Sentence",
+                    subtitle = "ON: .!? only / OFF: ,.!? (앱 재시작 시 적용)",
                     checked = settings.sentenceOnly,
                     onCheckedChange = { viewModel.setSentenceOnly(it) }
                 )
@@ -197,9 +197,37 @@ fun SettingsScreen(
 
             item {
                 SettingsClickableItem(
+                    title = "Transcription Provider",
+                    value = when (settings.transcriptionProvider) {
+                        "groq" -> "Groq (Faster)"
+                        else -> "OpenAI"
+                    },
+                    onClick = { viewModel.showProviderDialog() }
+                )
+            }
+
+            item {
+                SettingsClickableItem(
                     title = "OpenAI API Key",
                     value = if (settings.openAiApiKey.isNotEmpty()) "Configured" else "Not set",
                     onClick = { viewModel.showApiKeyDialog() }
+                )
+            }
+
+            item {
+                SettingsClickableItem(
+                    title = "Groq API Key",
+                    value = if (settings.groqApiKey.isNotEmpty()) "Configured" else "Not set",
+                    onClick = { viewModel.showGroqApiKeyDialog() }
+                )
+            }
+
+            item {
+                SettingsSwitchItem(
+                    title = "Skip Preprocessing",
+                    subtitle = "Skip for small/optimized files",
+                    checked = settings.skipPreprocessingForSmallFiles,
+                    onCheckedChange = { viewModel.setSkipPreprocessing(it) }
                 )
             }
 
@@ -256,6 +284,22 @@ fun SettingsScreen(
             currentLanguage = settings.transcriptionLanguage,
             onSelect = { viewModel.setTranscriptionLanguage(it) },
             onDismiss = { viewModel.dismissLanguageDialog() }
+        )
+    }
+
+    if (uiState.showProviderDialog) {
+        ProviderDialog(
+            currentProvider = settings.transcriptionProvider,
+            onSelect = { viewModel.setTranscriptionProvider(it) },
+            onDismiss = { viewModel.dismissProviderDialog() }
+        )
+    }
+
+    if (uiState.showGroqApiKeyDialog) {
+        GroqApiKeyDialog(
+            currentKey = settings.groqApiKey,
+            onSave = { viewModel.setGroqApiKey(it) },
+            onDismiss = { viewModel.dismissGroqApiKeyDialog() }
         )
     }
 }
@@ -640,6 +684,117 @@ private fun LanguageDialog(
             }
         },
         confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun ProviderDialog(
+    currentProvider: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val providers = listOf(
+        Triple("groq", "Groq (Recommended)", "whisper-large-v3-turbo | 216x faster | \$0.04/hour"),
+        Triple("openai", "OpenAI", "whisper-1 | Standard | \$0.36/hour")
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Select Provider") },
+        text = {
+            Column {
+                providers.forEach { (code, name, description) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(code) }
+                            .padding(vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(text = name)
+                            Text(
+                                text = description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (code == currentProvider) {
+                            Icon(
+                                Icons.Default.Check,
+                                contentDescription = "Selected",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@Composable
+private fun GroqApiKeyDialog(
+    currentKey: String,
+    onSave: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var key by remember { mutableStateOf(currentKey) }
+    var showKey by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Groq API Key") },
+        text = {
+            Column {
+                Text(
+                    text = "Enter your Groq API key for fast transcription (216x faster)",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Get your key at console.groq.com",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PurplePrimary
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = key,
+                    onValueChange = { key = it },
+                    label = { Text("API Key") },
+                    singleLine = true,
+                    visualTransformation = if (showKey) VisualTransformation.None
+                    else PasswordVisualTransformation(),
+                    trailingIcon = {
+                        IconButton(onClick = { showKey = !showKey }) {
+                            Icon(
+                                imageVector = if (showKey) Icons.Default.VisibilityOff
+                                else Icons.Default.Visibility,
+                                contentDescription = "Toggle visibility"
+                            )
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { onSave(key) }) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("Cancel")
             }

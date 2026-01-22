@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.Podcasts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -77,14 +76,6 @@ fun PlaylistScreen(
                     containerColor = MaterialTheme.colorScheme.background
                 )
             )
-        },
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = { viewModel.showCreatePlaylistDialog() },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Create playlist")
-            }
         }
     ) { padding ->
         Box(modifier = Modifier.padding(padding)) {
@@ -136,27 +127,23 @@ fun PlaylistScreen(
                         )
                     }
 
-                    // Playlists
-                    if (uiState.playlists.isEmpty()) {
-                        item {
-                            Text(
-                                text = "No playlists yet. Tap + to create one.",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                    } else {
-                        items(
-                            items = uiState.playlists,
-                            key = { "playlist_${it.playlist.id}" }
-                        ) { playlistWithProgress ->
-                            PlaylistItem(
-                                playlistWithProgress = playlistWithProgress,
-                                onClick = { onNavigateToPlaylistDetail(playlistWithProgress.playlist.id) },
-                                onDelete = { playlistToDelete = playlistWithProgress.playlist }
-                            )
-                        }
+                    // New Playlist Card - always show first
+                    item {
+                        NewPlaylistCard(
+                            onClick = { viewModel.showCreatePlaylistDialog() }
+                        )
+                    }
+
+                    // Existing Playlists
+                    items(
+                        items = uiState.playlists,
+                        key = { "playlist_${it.playlist.id}" }
+                    ) { playlistWithProgress ->
+                        PlaylistItem(
+                            playlistWithProgress = playlistWithProgress,
+                            onClick = { onNavigateToPlaylistDetail(playlistWithProgress.playlist.id) },
+                            onDelete = { playlistToDelete = playlistWithProgress.playlist }
+                        )
                     }
                 }
             }
@@ -259,6 +246,40 @@ private fun TranscribedItem(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NewPlaylistCard(
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        tonalElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Text(
+                text = "New Playlist",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

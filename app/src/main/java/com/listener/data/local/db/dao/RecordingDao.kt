@@ -23,4 +23,7 @@ interface RecordingDao {
 
     @Query("DELETE FROM user_recordings WHERE sourceId = :sourceId")
     suspend fun deleteAllRecordings(sourceId: String)
+
+    @Query("DELETE FROM user_recordings")
+    suspend fun deleteAll()
 }

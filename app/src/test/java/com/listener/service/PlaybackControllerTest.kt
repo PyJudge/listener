@@ -1,6 +1,7 @@
 package com.listener.service
 
 import android.content.Context
+import com.listener.data.repository.TranscriptionRepositoryImpl
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
@@ -124,7 +125,7 @@ class PlaybackControllerTest {
         audioDownloadsDir.mkdirs()
 
         val sourceId = "test_source"
-        val fileName = "${sourceId.hashCode()}.mp3"
+        val fileName = "${TranscriptionRepositoryImpl.safeFileName(sourceId)}.mp3"
         val audioFile = File(audioDownloadsDir, fileName)
         audioFile.createNewFile()
 
@@ -139,7 +140,7 @@ class PlaybackControllerTest {
         audioDownloadsDir.mkdirs()
 
         val sourceId = "test_source"
-        val fileName = "${sourceId.hashCode()}.mp3"
+        val fileName = "${TranscriptionRepositoryImpl.safeFileName(sourceId)}.mp3"
         val audioFile = File(audioDownloadsDir, fileName)
         audioFile.createNewFile()
 

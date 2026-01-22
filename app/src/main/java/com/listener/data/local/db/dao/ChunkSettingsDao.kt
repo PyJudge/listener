@@ -16,4 +16,7 @@ interface ChunkSettingsDao {
 
     @Query("DELETE FROM chunk_settings WHERE sourceId = :sourceId")
     suspend fun deleteSettings(sourceId: String)
+
+    @Query("DELETE FROM chunk_settings")
+    suspend fun deleteAll()
 }

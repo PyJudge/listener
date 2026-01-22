@@ -23,6 +23,7 @@ data class HomeUiState(
     val newEpisodes: List<PodcastEpisodeEntity> = emptyList(),
     val playlists: List<PlaylistEntity> = emptyList(),
     val playlistItemCounts: Map<Long, Int> = emptyMap(),
+    val podcastNames: Map<String, String> = emptyMap(), // feedUrl -> podcastName
     val isLoading: Boolean = false,
     val hasSubscriptions: Boolean = false,
     val showCreatePlaylistDialog: Boolean = false
@@ -66,9 +67,15 @@ class HomeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            // Check if has subscriptions
+            // Check if has subscriptions and build podcast name map
             podcastDao.getAllSubscriptions().collect { subs ->
-                _uiState.update { it.copy(hasSubscriptions = subs.isNotEmpty()) }
+                val nameMap = subs.associate { it.feedUrl to it.title }
+                _uiState.update {
+                    it.copy(
+                        hasSubscriptions = subs.isNotEmpty(),
+                        podcastNames = nameMap
+                    )
+                }
             }
         }
 

@@ -10,6 +10,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.listener.domain.repository.TranscriptionRepository
 import com.listener.presentation.MainScreen
 import com.listener.presentation.components.LoadingState
 import com.listener.presentation.theme.ListenerTheme
@@ -22,6 +23,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var rechunkOnStartupManager: RechunkOnStartupManager
+
+    @Inject
+    lateinit var transcriptionRepository: TranscriptionRepository
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -37,7 +41,7 @@ class MainActivity : ComponentActivity() {
                     if (isRechunking) {
                         LoadingState(message = "청크 설정 적용 중...")
                     } else {
-                        MainScreen()
+                        MainScreen(transcriptionRepository = transcriptionRepository)
                     }
                 }
             }

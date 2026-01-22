@@ -65,6 +65,7 @@ class PlaybackService : MediaSessionService() {
     private var sourceId = ""
     private var audioUri = ""
     private var gapJob: Job? = null
+    private var recordingJob: Job? = null  // startRecordingWithGap의 Job 추적
 
     private val _playbackState = MutableStateFlow(PlaybackState())
     val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
@@ -109,12 +110,21 @@ class PlaybackService : MediaSessionService() {
             .build()
     }
 
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
         return mediaSession
     }
 
     override fun onDestroy() {
+        // 모든 진행 중인 작업 취소
+        gapJob?.cancel()
+        recordingJob?.cancel()
         stopPositionMonitoring()
+
         mediaSession?.run {
             player.release()
             release()
@@ -164,23 +174,38 @@ class PlaybackService : MediaSessionService() {
 
     fun pause() {
         gapJob?.cancel()
+        recordingJob?.cancel()
         stopPositionMonitoring()
+
+        // 현재 재생 위치 저장 (HIGH 버그 수정)
+        val currentPosition = player?.currentPosition ?: 0L
         player?.pause()
-        stateMachine.pause()
+        stateMachine.pause(currentPosition)
+
         updatePlaybackState { copy(isPlaying = false, learningState = LearningState.Paused) }
     }
 
     fun resume() {
-        stateMachine.resume()
+        val resumePosition = stateMachine.resume()
         when (stateMachine.state.value) {
             is LearningState.Gap, is LearningState.GapWithRecording -> startGapTimer()
-            else -> player?.play()
+            else -> {
+                // 저장된 위치로 seek 후 재생 (HIGH 버그 수정)
+                if (resumePosition > 0) {
+                    player?.seekTo(resumePosition)
+                }
+                player?.play()
+                startPositionMonitoring()
+            }
         }
         updatePlaybackState { copy(isPlaying = true, learningState = stateMachine.state.value) }
     }
 
     fun nextChunk() {
         if (currentChunkIndex < chunks.size - 1) {
+            // 진행 중인 Gap/Recording 작업 취소
+            cancelPendingOperations()
+
             currentChunkIndex++
             val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
@@ -198,6 +223,9 @@ class PlaybackService : MediaSessionService() {
 
     fun previousChunk() {
         if (currentChunkIndex > 0) {
+            // 진행 중인 Gap/Recording 작업 취소
+            cancelPendingOperations()
+
             currentChunkIndex--
             val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
@@ -229,6 +257,9 @@ class PlaybackService : MediaSessionService() {
 
     fun seekToChunk(index: Int) {
         if (index in chunks.indices) {
+            // 진행 중인 Gap/Recording 작업 취소 (CRITICAL 버그 수정)
+            cancelPendingOperations()
+
             currentChunkIndex = index
             val newIndex = currentChunkIndex  // 로컬 변수로 캡처
             stateMachine.stop()
@@ -266,6 +297,33 @@ class PlaybackService : MediaSessionService() {
     private fun stopPositionMonitoring() {
         isMonitoringActive = false
         positionHandler.removeCallbacks(positionMonitorRunnable)
+    }
+
+    /**
+     * 청크 전환 시 진행 중인 모든 비동기 작업 취소
+     * - Gap 타이머 취소
+     * - 녹음+Gap 타이머 취소
+     * - 진행 중인 녹음 중지
+     * - 위치 모니터링 중지
+     */
+    private fun cancelPendingOperations() {
+        // Gap 타이머 취소
+        gapJob?.cancel()
+        gapJob = null
+
+        // 녹음+Gap 타이머 취소
+        recordingJob?.cancel()
+        recordingJob = null
+
+        // 진행 중인 녹음 중지
+        if (recordingManager.isCurrentlyRecording()) {
+            serviceScope.launch {
+                recordingManager.stopRecording()
+            }
+        }
+
+        // 위치 모니터링 중지
+        stopPositionMonitoring()
     }
 
     private fun onChunkPlaybackComplete() {
@@ -307,6 +365,8 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun startGapTimer() {
+        gapJob?.cancel()  // 기존 타이머 취소 (중복 실행 방지)
+
         val chunk = chunks.getOrNull(currentChunkIndex) ?: return
         val gapDuration = (chunk.durationMs * (1 + stateMachine.getSettings().gapRatio)).toLong()
 
@@ -320,14 +380,23 @@ class PlaybackService : MediaSessionService() {
         val chunk = chunks.getOrNull(currentChunkIndex) ?: return
         val gapDuration = (chunk.durationMs * (1 + stateMachine.getSettings().gapRatio)).toLong()
 
-        // pause()는 position monitoring에서 이미 호출됨 - 중복 호출 제거
-
-        serviceScope.launch {
+        // Job 저장하여 청크 전환 시 취소 가능하도록 함 (CRITICAL 버그 수정)
+        recordingJob = serviceScope.launch {
             val success = recordingManager.startRecording(sourceId, currentChunkIndex)
             if (!success) {
-                // 녹음 실패 시 (권한 없음 등) Gap으로 전환하여 정상 진행
-                stateMachine.onRecordingFailed()
-                updatePlaybackState { copy(learningState = stateMachine.state.value) }
+                // 녹음 실패 시 (권한 없음 등) LR 모드로 전환
+                val result = stateMachine.onRecordingFailed()
+                if (result == TransitionResult.SwitchToLRMode) {
+                    // LR 모드로 전환됨 - UI 상태 업데이트
+                    updatePlaybackState {
+                        copy(
+                            learningState = stateMachine.state.value,
+                            settings = stateMachine.getSettings()
+                        )
+                    }
+                } else {
+                    updatePlaybackState { copy(learningState = stateMachine.state.value) }
+                }
             }
             delay(gapDuration)
             if (success) {
@@ -385,6 +454,10 @@ class PlaybackService : MediaSessionService() {
 
     private fun updatePlaybackState(update: PlaybackState.() -> PlaybackState) {
         _playbackState.value = _playbackState.value.update()
+    }
+
+    fun hasRecordPermission(): Boolean {
+        return recordingManager.hasRecordPermission()
     }
 
     private fun saveProgress() {

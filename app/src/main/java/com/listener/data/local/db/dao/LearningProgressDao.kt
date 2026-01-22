@@ -23,4 +23,7 @@ interface LearningProgressDao {
 
     @Query("DELETE FROM learning_progress WHERE sourceId = :sourceId")
     suspend fun deleteProgress(sourceId: String)
+
+    @Query("DELETE FROM learning_progress")
+    suspend fun deleteAll()
 }

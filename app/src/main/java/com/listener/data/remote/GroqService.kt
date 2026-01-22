@@ -1,6 +1,6 @@
 package com.listener.data.remote
 
-import com.listener.data.remote.api.OpenAiApi
+import com.listener.data.remote.api.GroqApi
 import com.listener.data.remote.dto.WhisperResponse
 import com.listener.data.repository.SettingsRepository
 import com.listener.domain.service.TranscriptionService
@@ -13,17 +13,20 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class ApiKeyNotSetException(provider: String) :
-    Exception("$provider API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.")
-
+/**
+ * Groq Whisper API 서비스
+ *
+ * - 모델: whisper-large-v3-turbo (216x 실시간 속도)
+ * - 가격: $0.04/hour (OpenAI 대비 9x 저렴)
+ */
 @Singleton
-class OpenAiService @Inject constructor(
-    private val openAiApi: OpenAiApi,
+class GroqService @Inject constructor(
+    private val groqApi: GroqApi,
     private val settingsRepository: SettingsRepository
 ) : TranscriptionService {
 
-    override val providerName = "OpenAI"
-    override val modelName = "whisper-1"
+    override val providerName = "Groq"
+    override val modelName = "whisper-large-v3-turbo"
 
     override suspend fun transcribe(
         audioFile: File,
@@ -46,7 +49,7 @@ class OpenAiService @Inject constructor(
         val wordPart = "word".toRequestBody("text/plain".toMediaType())
         val languagePart = language?.toRequestBody("text/plain".toMediaType())
 
-        return openAiApi.transcribe(
+        return groqApi.transcribe(
             authorization = "Bearer $apiKey",
             file = filePart,
             model = modelPart,
@@ -60,6 +63,6 @@ class OpenAiService @Inject constructor(
     override suspend fun hasApiKey(): Boolean = getApiKey().isNotBlank()
 
     private suspend fun getApiKey(): String {
-        return settingsRepository.settings.first().openAiApiKey
+        return settingsRepository.settings.first().groqApiKey
     }
 }

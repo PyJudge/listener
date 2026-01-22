@@ -1,5 +1,8 @@
 package com.listener.presentation.player
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -118,6 +121,16 @@ fun FullScreenPlayerScreen(
         if (sourceId.isNotEmpty()) {
             viewModel.loadBySourceId(sourceId)
         }
+    }
+
+    // Permission launcher for RECORD_AUDIO
+    val recordPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.onRecordPermissionGranted()
+        }
+        // If denied, stay in current mode (LR)
     }
 
     var isBlindMode by remember { mutableStateOf(false) }
@@ -266,7 +279,14 @@ fun FullScreenPlayerScreen(
                 settings = playbackState.settings,
                 onRepeatChange = { viewModel.setRepeatCount(it) },
                 onGapRatioChange = { viewModel.setGapRatio(it) },
-                onPlayModeToggle = { viewModel.togglePlayMode() }
+                onPlayModeToggle = {
+                    val nextMode = viewModel.getNextPlayMode()
+                    if (nextMode == PlayMode.LRLR && !viewModel.hasRecordPermission()) {
+                        recordPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    } else {
+                        viewModel.togglePlayMode()
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -516,7 +536,7 @@ private fun ModernSeekBar(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(32.dp)
                 .onSizeChanged { trackWidth = it.width.toFloat() }
                 .pointerInput(Unit) {
                     detectTapGestures { offset ->

@@ -173,4 +173,101 @@ class TimestampMatcherTest {
         // Should fallback since target is at index 2
         assertNotNull(result)
     }
+
+    // ===== Chunk-Sound 동기화 버그 테스트 (Essential 에피소드 실제 데이터) =====
+
+    @Test
+    fun `should match that-dot not that - essential episode chunk 14`() {
+        // 실제 essential 에피소드의 word timestamps
+        val words = listOf(
+            Word("or", 59.88, 60.08),           // index 0
+            Word("experienced", 60.08, 60.44),  // index 1
+            Word("something,", 60.44, 61.18),   // index 2
+            Word("our", 61.18, 61.72),          // index 3
+            Word("brains", 61.72, 62.0),        // index 4
+            Word("are", 62.0, 62.18),           // index 5
+            Word("drawn", 62.18, 62.44),        // index 6
+            Word("to", 62.44, 62.68),           // index 7
+            Word("that.", 62.26, 62.98),        // index 8 - 첫 번째 "that."
+            Word("Our", 62.98, 63.04),          // index 9
+            Word("attentional", 63.04, 63.56),  // index 10
+            Word("systems", 63.56, 63.9),       // index 11
+            Word("draw", 63.9, 64.28),          // index 12
+            Word("us", 64.28, 64.48),           // index 13
+            Word("to", 64.48, 64.6),            // index 14
+            Word("that.", 64.6, 64.94),         // index 15 - 두 번째 "that." ← 정답!
+            Word("And", 64.94, 65.44),          // index 16
+            Word("when", 65.44, 65.82),         // index 17
+            Word("you", 65.82, 66.1),           // index 18
+            Word("are", 66.1, 66.24),           // index 19
+            Word("paying", 66.24, 66.42),       // index 20
+            Word("attention", 66.42, 66.7),     // index 21
+            Word("to", 66.7, 66.98),            // index 22
+            Word("something,", 66.98, 67.38),   // index 23
+            Word("that's", 66.88, 67.92),       // index 24
+            Word("part", 67.92, 68.58),         // index 25
+            Word("of", 68.58, 68.84),           // index 26
+            Word("what", 68.84, 69.06),         // index 27
+            Word("makes", 69.06, 69.42),        // index 28
+            Word("things", 69.42, 69.68),       // index 29
+            Word("memorable.", 69.68, 70.06),   // index 30
+            Word("Second", 70.06, 71.06),       // index 31
+            Word("is", 71.06, 71.28),           // index 32
+            Word("repetition.", 71.28, 71.64),  // index 33
+            Word("Third", 71.64, 72.92),        // index 34
+            Word("is", 72.92, 73.56),           // index 35
+            Word("association.", 73.56, 74.28), // index 36
+            Word("So", 75.38, 75.68),           // index 37
+            Word("if", 75.68, 76.52),           // index 38
+            Word("you", 76.52, 76.96),          // index 39
+            Word("meet", 76.96, 78.08),         // index 40
+            Word("somebody", 78.08, 78.5),      // index 41
+            Word("new", 78.5, 79.1),            // index 42
+            Word("that", 79.1, 79.9),           // index 43 - "that" (마침표 없음) ← 오답!
+            Word("knows", 79.9, 80.44),         // index 44
+        )
+
+        // 문장: "Our attentional systems draw us to that."
+        // 매칭할 마지막 단어들: ["draw", "us", "to", "that."]
+        val sentenceWords = listOf("Our", "attentional", "systems", "draw", "us", "to", "that.")
+
+        val result = matcher.findEndTimestamp(
+            sentenceWords = sentenceWords,
+            allWords = words,
+            startWordIndex = 9,  // "Our"부터 시작
+            maxSearchIndex = words.size,
+            sentenceStartTime = 62.98  // "Our"의 시작 시간
+        )
+
+        // "that."(index 15, end=64.94)를 매칭해야 함
+        // "that"(index 43, end=79.9)를 매칭하면 안 됨!
+        assertNotNull("Should find matching words", result)
+        assertEquals("Should match 'that.' at index 15, not 'that' at index 43",
+            64.94, result!!.first, 0.01)
+    }
+
+    @Test
+    fun `should distinguish that-dot from that without dot`() {
+        // 간단한 케이스: "that."과 "that"이 모두 있을 때 "that."만 매칭해야 함
+        val words = listOf(
+            Word("to", 0.0, 0.1),
+            Word("that.", 0.1, 0.2),    // 마침표 있음 ← 정답
+            Word("And", 0.2, 0.3),
+            Word("that", 0.3, 0.4),     // 마침표 없음 ← 오답
+        )
+
+        val sentenceWords = listOf("to", "that.")
+
+        val result = matcher.findEndTimestamp(
+            sentenceWords = sentenceWords,
+            allWords = words,
+            startWordIndex = 0
+        )
+
+        assertNotNull(result)
+        // "that."(index 1, end=0.2)를 매칭해야 함
+        assertEquals(0.2, result!!.first, 0.01)
+        // "that"(index 3, end=0.4)를 매칭하면 안 됨
+        assertNotEquals(0.4, result.first, 0.01)
+    }
 }

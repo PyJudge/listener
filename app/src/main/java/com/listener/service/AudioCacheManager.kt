@@ -15,6 +15,8 @@ class AudioCacheManager @Inject constructor(
     companion object {
         const val MAX_CACHE_SIZE_BYTES = 1L * 1024 * 1024 * 1024 // 1GB
         private const val CACHE_DIR_NAME = "audio_cache"
+        private const val DOWNLOADS_DIR_NAME = "audio_downloads"
+        private const val PREPROCESSED_DIR_NAME = "preprocessed_audio"
     }
 
     private val cacheDir: File
@@ -22,8 +24,16 @@ class AudioCacheManager @Inject constructor(
             if (!it.exists()) it.mkdirs()
         }
 
+    private val downloadsDir: File
+        get() = File(context.cacheDir, DOWNLOADS_DIR_NAME)
+
+    private val preprocessedDir: File
+        get() = File(context.cacheDir, PREPROCESSED_DIR_NAME)
+
     suspend fun getCacheSize(): Long = withContext(Dispatchers.IO) {
-        calculateDirSize(cacheDir)
+        calculateDirSize(cacheDir) +
+        calculateDirSize(downloadsDir) +
+        calculateDirSize(preprocessedDir)
     }
 
     suspend fun getCachedFile(key: String): File? = withContext(Dispatchers.IO) {
@@ -44,7 +54,11 @@ class AudioCacheManager @Inject constructor(
 
     suspend fun clearCache(): Long = withContext(Dispatchers.IO) {
         val freedSize = getCacheSize()
+        // Clear all audio-related directories
         cacheDir.deleteRecursively()
+        downloadsDir.deleteRecursively()
+        preprocessedDir.deleteRecursively()
+        // Recreate cache dir
         cacheDir.mkdirs()
         freedSize
     }

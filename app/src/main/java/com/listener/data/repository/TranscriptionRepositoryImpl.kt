@@ -1,6 +1,8 @@
 package com.listener.data.repository
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 import com.google.gson.Gson
 import com.listener.data.local.db.dao.ChunkSettingsDao
@@ -9,7 +11,7 @@ import com.listener.data.local.db.dao.TranscriptionDao
 import com.listener.data.local.db.entity.ChunkEntity
 import com.listener.data.local.db.entity.ChunkSettingsEntity
 import com.listener.data.local.db.entity.TranscriptionResultEntity
-import com.listener.data.remote.OpenAiService
+import com.listener.data.remote.TranscriptionServiceFactory
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.ChunkSettings
 import com.listener.domain.model.Segment
@@ -19,8 +21,10 @@ import com.listener.domain.repository.PodcastRepository
 import com.listener.domain.repository.TranscriptionRepository
 import com.listener.domain.repository.TranscriptionState
 import com.listener.domain.repository.TranscriptionStep
-import com.listener.domain.usecase.AudioPreprocessUseCase
+import com.listener.domain.usecase.FFmpegPreprocessUseCase
 import com.listener.domain.usecase.chunking.ChunkingUseCase
+import com.listener.service.TranscriptionForegroundService
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +42,7 @@ import kotlinx.coroutines.withTimeout
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.security.MessageDigest
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import javax.inject.Inject
@@ -51,9 +56,10 @@ class TranscriptionRepositoryImpl @Inject constructor(
     private val chunkSettingsDao: ChunkSettingsDao,
     private val localFileDao: LocalFileDao,
     private val podcastRepository: PodcastRepository,
-    private val openAiService: OpenAiService,
+    private val transcriptionServiceFactory: TranscriptionServiceFactory,
+    private val settingsRepository: SettingsRepository,
     private val chunkingUseCase: ChunkingUseCase,
-    private val audioPreprocessUseCase: AudioPreprocessUseCase,
+    private val ffmpegPreprocessUseCase: FFmpegPreprocessUseCase,
     private val gson: Gson
 ) : TranscriptionRepository {
 
@@ -64,6 +70,15 @@ class TranscriptionRepositoryImpl @Inject constructor(
             "en", "ko", "ja", "zh", "es", "fr", "de", "it", "pt", "ru",
             "ar", "hi", "nl", "pl", "tr", "vi", "th", "id", "cs", "sv"
         )
+
+        /**
+         * Generate a safe filename from sourceId using SHA-256.
+         * This prevents hash collisions that can occur with hashCode().
+         */
+        fun safeFileName(sourceId: String): String {
+            val bytes = MessageDigest.getInstance("SHA-256").digest(sourceId.toByteArray())
+            return bytes.take(16).joinToString("") { "%02x".format(it) }
+        }
     }
 
     // Application 레벨 스코프 - 화면 이동해도 유지됨
@@ -87,8 +102,38 @@ class TranscriptionRepositoryImpl @Inject constructor(
         // 이전 작업 취소
         currentJob?.cancel()
 
+        // Start Foreground Service for background protection
+        startForegroundService(sourceId, language)
+
+        // Run transcription in protected scope
         currentJob = transcriptionScope.launch {
             runTranscription(sourceId, language)
+        }
+    }
+
+    private fun startForegroundService(sourceId: String, language: String) {
+        try {
+            val intent = TranscriptionForegroundService.createStartIntent(context, sourceId, language)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+            Log.d(TAG, "Started TranscriptionForegroundService")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service: ${e.message}", e)
+            // Continue without foreground service - transcription will still run
+            // but may be killed in background
+        }
+    }
+
+    private fun stopForegroundService() {
+        try {
+            val intent = Intent(context, TranscriptionForegroundService::class.java)
+            context.stopService(intent)
+            Log.d(TAG, "Stopped TranscriptionForegroundService")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to stop foreground service: ${e.message}")
         }
     }
 
@@ -96,6 +141,7 @@ class TranscriptionRepositoryImpl @Inject constructor(
         currentJob?.cancel()
         currentJob = null
         _transcriptionState.value = TranscriptionState.Idle
+        stopForegroundService()
     }
 
     private suspend fun runTranscription(sourceId: String, language: String) {
@@ -122,14 +168,18 @@ class TranscriptionRepositoryImpl @Inject constructor(
                 return
             }
 
-            // API 키 확인
-            if (!openAiService.hasApiKey()) {
+            // 전사 서비스 가져오기 및 API 키 확인
+            val transcriptionService = transcriptionServiceFactory.getService()
+            if (!transcriptionService.hasApiKey()) {
                 _transcriptionState.value = TranscriptionState.Error(
                     sourceId = sourceId,
-                    message = "OpenAI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요."
+                    message = "${transcriptionService.providerName} API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요."
                 )
                 return
             }
+
+            // 설정 가져오기
+            val settings = settingsRepository.settings.first()
 
             // 오디오 소스 찾기
             val audioSource = findAudioSource(sourceId)
@@ -162,7 +212,7 @@ class TranscriptionRepositoryImpl @Inject constructor(
                 return
             }
 
-            // Preprocess audio (압축)
+            // Preprocess audio (FFmpeg 압축 - 스킵 로직 포함)
             _transcriptionState.value = TranscriptionState.InProgress(
                 sourceId = sourceId,
                 step = TranscriptionStep.PREPROCESSING,
@@ -171,13 +221,35 @@ class TranscriptionRepositoryImpl @Inject constructor(
             )
 
             val preprocessResult = try {
-                audioPreprocessUseCase.preprocess(audioFile) { progress ->
+                // 스킵 가능 여부 확인
+                if (settings.skipPreprocessingForSmallFiles &&
+                    ffmpegPreprocessUseCase.canSkipPreprocessing(audioFile)) {
+                    Log.i(TAG, "Skipping preprocessing - file already optimized")
                     _transcriptionState.value = TranscriptionState.InProgress(
                         sourceId = sourceId,
                         step = TranscriptionStep.PREPROCESSING,
                         downloadProgress = 1f,
-                        preprocessProgress = progress
+                        preprocessProgress = 1f
                     )
+                    FFmpegPreprocessUseCase.PreprocessResult(
+                        chunks = listOf(FFmpegPreprocessUseCase.AudioChunk(
+                            path = audioFile.absolutePath,
+                            startOffsetMs = 0,
+                            durationMs = 0
+                        )),
+                        originalSizeMb = audioFile.length() / (1024f * 1024f),
+                        processedSizeMb = audioFile.length() / (1024f * 1024f),
+                        skipped = true
+                    )
+                } else {
+                    ffmpegPreprocessUseCase.preprocess(audioFile) { progress ->
+                        _transcriptionState.value = TranscriptionState.InProgress(
+                            sourceId = sourceId,
+                            step = TranscriptionStep.PREPROCESSING,
+                            downloadProgress = 1f,
+                            preprocessProgress = progress
+                        )
+                    }
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Preprocessing failed, using original: ${e.message}")
@@ -197,15 +269,17 @@ class TranscriptionRepositoryImpl @Inject constructor(
                 transcriptionProgress = 0f
             )
 
+            Log.i(TAG, "Using ${transcriptionService.providerName} (${transcriptionService.modelName})")
+
             val whisperResponse = try {
                 withTimeout(TRANSCRIPTION_TIMEOUT_MS) {
-                    openAiService.transcribe(fileToTranscribe, language)
+                    transcriptionService.transcribe(fileToTranscribe, language)
                 }
             } catch (e: TimeoutCancellationException) {
                 cleanupCaches(sourceId)
                 _transcriptionState.value = TranscriptionState.Error(
                     sourceId = sourceId,
-                    message = "전사 요청 시간이 초과되었습니다 (3분). 네트워크 상태를 확인해주세요."
+                    message = "전사 요청 시간이 초과되었습니다 (15분). 네트워크 상태를 확인해주세요."
                 )
                 return
             }
@@ -290,7 +364,7 @@ class TranscriptionRepositoryImpl @Inject constructor(
         try {
             Log.d(TAG, "downloadAudioFile: $url")
             cacheDir.mkdirs()
-            val fileName = "${sourceId.hashCode()}.mp3"
+            val fileName = "${safeFileName(sourceId)}.mp3"
             val targetFile = File(cacheDir, fileName)
 
             // 캐시된 파일 재사용
@@ -349,7 +423,7 @@ class TranscriptionRepositoryImpl @Inject constructor(
                     ?: return null
 
                 cacheDir.mkdirs()
-                val fileName = "${sourceId.hashCode()}.mp3"
+                val fileName = "${safeFileName(sourceId)}.mp3"
                 val targetFile = File(cacheDir, fileName)
 
                 inputStream.use { input ->
@@ -370,11 +444,11 @@ class TranscriptionRepositoryImpl @Inject constructor(
 
     private fun cleanupCaches(sourceId: String) {
         try {
-            val targetFileName = "${sourceId.hashCode()}.mp3"
+            val targetFileName = "${safeFileName(sourceId)}.mp3"
             File(cacheDir, targetFileName).let {
                 if (it.exists()) it.delete()
             }
-            audioPreprocessUseCase.cleanupTempFiles()
+            ffmpegPreprocessUseCase.cleanupTempFiles()
         } catch (e: Exception) {
             Log.w(TAG, "Failed to cleanup caches: ${e.message}")
         }

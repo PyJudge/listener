@@ -13,6 +13,7 @@ import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.PlaybackState
 import com.listener.domain.model.PlayMode
 import com.listener.domain.repository.TranscriptionRepository
+import com.listener.data.repository.SettingsRepository
 import com.listener.service.PlaybackController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,8 @@ class PlayerViewModel @Inject constructor(
     private val podcastDao: PodcastDao,
     private val localFileDao: LocalFileDao,
     private val recentLearningDao: RecentLearningDao,
-    private val playbackController: PlaybackController
+    private val playbackController: PlaybackController,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     companion object {
@@ -72,6 +74,21 @@ class PlayerViewModel @Inject constructor(
     init {
         // Bind to PlaybackService when ViewModel is created
         playbackController.bindService()
+
+        // 저장된 PlayMode 로드 및 동기화
+        viewModelScope.launch {
+            settingsRepository.settings.collect { appSettings ->
+                try {
+                    val savedPlayMode = PlayMode.valueOf(appSettings.playMode)
+                    val currentSettings = playbackState.value.settings
+                    if (currentSettings.playMode != savedPlayMode) {
+                        playbackController.updateSettings(currentSettings.copy(playMode = savedPlayMode))
+                    }
+                } catch (e: IllegalArgumentException) {
+                    // Invalid play mode value, ignore
+                }
+            }
+        }
     }
 
     override fun onCleared() {
@@ -242,6 +259,11 @@ class PlayerViewModel @Inject constructor(
         }
         val newSettings = currentSettings.copy(playMode = nextMode)
         playbackController.updateSettings(newSettings)
+
+        // PlayMode를 DataStore에 저장
+        viewModelScope.launch {
+            settingsRepository.setPlayMode(nextMode.name)
+        }
     }
 
     fun updateSettings(settings: LearningSettings) {
@@ -380,5 +402,32 @@ class PlayerViewModel @Inject constructor(
      */
     fun isInPlaylistMode(): Boolean {
         return _playlistId.value != null
+    }
+
+    /**
+     * Check if the app has RECORD_AUDIO permission.
+     */
+    fun hasRecordPermission(): Boolean {
+        return playbackController.hasRecordPermission()
+    }
+
+    /**
+     * Get the next play mode in the cycle.
+     */
+    fun getNextPlayMode(): PlayMode {
+        val current = playbackState.value.settings.playMode
+        return when (current) {
+            PlayMode.NORMAL -> PlayMode.LR
+            PlayMode.LR -> PlayMode.LRLR
+            PlayMode.LRLR -> PlayMode.NORMAL
+        }
+    }
+
+    /**
+     * Called when RECORD_AUDIO permission is granted.
+     * Proceeds with switching to LRLR mode.
+     */
+    fun onRecordPermissionGranted() {
+        togglePlayMode()
     }
 }

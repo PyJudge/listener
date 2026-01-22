@@ -142,4 +142,131 @@ class LearningStateMachineTest {
         val result = stateMachine.onPlaybackComplete()
         assertEquals(TransitionResult.NextChunk, result)
     }
+
+    // === pause 위치 저장 테스트 ===
+
+    @Test
+    fun `pause saves current position`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.pause(5000L)
+        assertEquals(5000L, stateMachine.getPausedPositionMs())
+    }
+
+    @Test
+    fun `resume returns saved position`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.pause(5000L)
+        val resumePosition = stateMachine.resume()
+        assertEquals(5000L, resumePosition)
+    }
+
+    @Test
+    fun `pause with zero position stores zero`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.pause(0L)
+        assertEquals(0L, stateMachine.getPausedPositionMs())
+    }
+
+    // === PlayMode 변경 시 상태 정규화 테스트 ===
+
+    @Test
+    fun `switching from LR Playing to LRLR normalizes to PlayingFirst`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        assertEquals(LearningState.Playing, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        assertEquals(LearningState.PlayingFirst, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LRLR PlayingFirst to LR normalizes to Playing`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        stateMachine.play()
+        assertEquals(LearningState.PlayingFirst, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        assertEquals(LearningState.Playing, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LR Gap to LRLR normalizes to GapWithRecording`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.onPlaybackComplete() // Playing → Gap
+        assertEquals(LearningState.Gap, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        assertEquals(LearningState.GapWithRecording, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LRLR GapWithRecording to LR normalizes to Gap`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        stateMachine.play()
+        stateMachine.onPlaybackComplete() // PlayingFirst → GapWithRecording
+        assertEquals(LearningState.GapWithRecording, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        assertEquals(LearningState.Gap, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LR Gap to NORMAL normalizes to Idle`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.onPlaybackComplete() // Playing → Gap
+        assertEquals(LearningState.Gap, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.NORMAL))
+        assertEquals(LearningState.Idle, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching modes during Idle maintains Idle`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        assertEquals(LearningState.Idle, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        assertEquals(LearningState.Idle, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching modes during Paused maintains Paused`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        stateMachine.play()
+        stateMachine.pause()
+        assertEquals(LearningState.Paused, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        assertEquals(LearningState.Paused, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LRLR PlayingSecond to LR normalizes to Playing`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        stateMachine.play()
+        stateMachine.onPlaybackComplete() // → GapWithRecording
+        stateMachine.onPlaybackComplete() // → PlayingSecond
+        assertEquals(LearningState.PlayingSecond, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        assertEquals(LearningState.Playing, stateMachine.state.value)
+    }
+
+    @Test
+    fun `switching from LRLR PlaybackRecording to LR normalizes to Idle`() {
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LRLR))
+        stateMachine.play()
+        stateMachine.onPlaybackComplete() // → GapWithRecording
+        stateMachine.onPlaybackComplete() // → PlayingSecond
+        stateMachine.onPlaybackComplete() // → PlaybackRecording
+        assertEquals(LearningState.PlaybackRecording, stateMachine.state.value)
+
+        stateMachine.updateSettings(LearningSettings(playMode = PlayMode.LR))
+        assertEquals(LearningState.Idle, stateMachine.state.value)
+    }
 }

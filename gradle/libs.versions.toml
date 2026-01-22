@@ -20,6 +20,7 @@ espresso = "3.6.1"
 coroutines = "1.9.0"
 kotlinxSerializationJson = "1.7.3"
 turbine = "1.2.0"
+ffmpegKit = "6.1.1"
 
 [libraries]
 # AndroidX Core
@@ -88,6 +89,9 @@ room-testing = { group = "androidx.room", name = "room-testing", version.ref = "
 mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version = "5.2.1" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 hilt-android-testing = { group = "com.google.dagger", name = "hilt-android-testing", version.ref = "hilt" }
+
+# FFmpeg (community fork - original archived June 2025)
+ffmpeg-kit = { group = "com.moizhassan.ffmpeg", name = "ffmpeg-kit-16kb", version.ref = "ffmpegKit" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

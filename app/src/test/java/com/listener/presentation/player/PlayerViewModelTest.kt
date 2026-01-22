@@ -9,15 +9,14 @@ import com.listener.data.local.db.entity.LocalAudioFileEntity
 import com.listener.data.local.db.entity.PlaylistItemEntity
 import com.listener.data.local.db.entity.PodcastEpisodeEntity
 import com.listener.data.local.db.entity.RecentLearningEntity
-import com.listener.data.repository.AppSettings
-import com.listener.data.repository.SettingsRepository
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.LearningSettings
 import com.listener.domain.model.LearningState
 import com.listener.domain.model.PlaybackState
 import com.listener.domain.model.PlayMode
 import com.listener.domain.repository.TranscriptionRepository
-import com.listener.domain.usecase.RechunkUseCase
+import com.listener.data.repository.AppSettings
+import com.listener.data.repository.SettingsRepository
 import com.listener.service.PlaybackController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -51,11 +50,9 @@ class PlayerViewModelTest {
     private lateinit var recentLearningDao: RecentLearningDao
     private lateinit var playbackController: PlaybackController
     private lateinit var settingsRepository: SettingsRepository
-    private lateinit var rechunkUseCase: RechunkUseCase
     private lateinit var viewModel: PlayerViewModel
 
     private val mockPlaybackState = MutableStateFlow(PlaybackState())
-    private val mockAppSettings = MutableStateFlow(AppSettings())
 
     private val testChunks = listOf(
         Chunk(orderIndex = 0, startMs = 0, endMs = 5000, displayText = "First chunk"),
@@ -123,10 +120,9 @@ class PlayerViewModelTest {
         recentLearningDao = mock()
         playbackController = mock()
         settingsRepository = mock()
-        rechunkUseCase = mock()
 
         whenever(playbackController.playbackState).thenReturn(mockPlaybackState)
-        whenever(settingsRepository.settings).thenReturn(mockAppSettings)
+        whenever(settingsRepository.settings).thenReturn(flowOf(AppSettings()))
     }
 
     @After
@@ -142,8 +138,7 @@ class PlayerViewModelTest {
             localFileDao = localFileDao,
             recentLearningDao = recentLearningDao,
             playbackController = playbackController,
-            settingsRepository = settingsRepository,
-            rechunkUseCase = rechunkUseCase
+            settingsRepository = settingsRepository
         )
     }
 
@@ -385,10 +380,12 @@ class PlayerViewModelTest {
         mockPlaybackState.value = PlaybackState(settings = LearningSettings(playMode = PlayMode.NORMAL))
 
         viewModel = createViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()  // Let init complete
+
         viewModel.togglePlayMode()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        verify(playbackController).updateSettings(LearningSettings(playMode = PlayMode.LR))
+        verify(playbackController, org.mockito.kotlin.atLeastOnce()).updateSettings(LearningSettings(playMode = PlayMode.LR))
     }
 
     @Test

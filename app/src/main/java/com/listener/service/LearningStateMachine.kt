@@ -38,7 +38,48 @@ class LearningStateMachine @Inject constructor() {
     private var onStateChangeListener: ((oldState: LearningState, newState: LearningState) -> Unit)? = null
 
     fun updateSettings(newSettings: LearningSettings) {
+        val oldMode = settings.playMode
         settings = newSettings
+        if (oldMode != newSettings.playMode) {
+            normalizeStateForPlayMode(newSettings.playMode)
+        }
+    }
+
+    /**
+     * PlayMode 변경 시 현재 상태를 새 모드에 맞게 정규화
+     * LR↔LRLR↔NORMAL 모드 전환 시 상태 매핑
+     */
+    private fun normalizeStateForPlayMode(newMode: PlayMode) {
+        val currentState = _state.value
+
+        val newState = when (newMode) {
+            PlayMode.NORMAL -> when (currentState) {
+                is LearningState.Playing,
+                is LearningState.PlayingFirst,
+                is LearningState.PlayingSecond -> LearningState.Playing
+                is LearningState.Gap,
+                is LearningState.GapWithRecording,
+                is LearningState.PlaybackRecording -> LearningState.Idle
+                else -> currentState
+            }
+            PlayMode.LR -> when (currentState) {
+                is LearningState.Playing,
+                is LearningState.PlayingFirst,
+                is LearningState.PlayingSecond -> LearningState.Playing
+                is LearningState.GapWithRecording -> LearningState.Gap
+                is LearningState.PlaybackRecording -> LearningState.Idle
+                else -> currentState
+            }
+            PlayMode.LRLR -> when (currentState) {
+                is LearningState.Playing -> LearningState.PlayingFirst
+                is LearningState.Gap -> LearningState.GapWithRecording
+                else -> currentState
+            }
+        }
+
+        if (newState != currentState) {
+            setState(newState)
+        }
     }
 
     /**
@@ -111,8 +152,8 @@ class LearningStateMachine @Inject constructor() {
     }
 
     /**
-     * HARD 모드에서 녹음 실패 시 graceful 처리
-     * 녹음을 건너뛰고 다음 단계로 진행
+     * 녹음 실패 시 처리
+     * LRLR 모드에서 녹음 실패 시 LR 모드로 전환
      */
     fun onRecordingFailed(): TransitionResult {
         return when (_state.value) {
@@ -122,9 +163,10 @@ class LearningStateMachine @Inject constructor() {
                 TransitionResult.Continue
             }
             is LearningState.GapWithRecording -> {
-                // HARD 모드: 녹음 실패 시 2차 재생으로 건너뜀
-                setState(LearningState.PlayingSecond)
-                TransitionResult.SkipRecordingPlayback
+                // LRLR 모드: 녹음 실패 시 LR 모드로 전환하고 Gap 상태로 변경
+                settings = settings.copy(playMode = PlayMode.LR)
+                setState(LearningState.Gap)
+                TransitionResult.SwitchToLRMode
             }
             else -> TransitionResult.Continue
         }
@@ -218,4 +260,5 @@ sealed class TransitionResult {
     data object PreviousChunk : TransitionResult()
     data object Stop : TransitionResult()
     data object SkipRecordingPlayback : TransitionResult() // 녹음 실패 시 녹음 재생 건너뜀
+    data object SwitchToLRMode : TransitionResult() // 녹음 실패 시 LRLR → LR 모드 전환
 }

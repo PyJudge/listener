@@ -15,7 +15,7 @@ android {
 
     defaultConfig {
         applicationId = "com.listener"
-        minSdk = 23
+        minSdk = 24
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"
@@ -127,6 +127,9 @@ dependencies {
 
     // Serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // FFmpeg
+    implementation(libs.ffmpeg.kit)
 
     // Testing
     testImplementation(libs.junit)

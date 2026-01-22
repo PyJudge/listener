@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.listener.data.repository.TranscriptionRepositoryImpl
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -188,7 +189,7 @@ class PlaybackController @Inject constructor(
      */
     fun getAudioFilePath(sourceId: String): String? {
         val cacheDir = File(context.cacheDir, "audio_downloads")
-        val fileName = "${sourceId.hashCode()}.mp3"
+        val fileName = "${TranscriptionRepositoryImpl.safeFileName(sourceId)}.mp3"
         val file = File(cacheDir, fileName)
         return if (file.exists()) file.absolutePath else null
     }
@@ -198,5 +199,12 @@ class PlaybackController @Inject constructor(
      */
     fun hasAudioFile(sourceId: String): Boolean {
         return getAudioFilePath(sourceId) != null
+    }
+
+    /**
+     * Check if the app has RECORD_AUDIO permission.
+     */
+    fun hasRecordPermission(): Boolean {
+        return playbackService?.hasRecordPermission() ?: false
     }
 }

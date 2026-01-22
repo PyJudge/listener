@@ -3,6 +3,7 @@ package com.listener.core.di
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.listener.BuildConfig
+import com.listener.data.remote.api.GroqApi
 import com.listener.data.remote.api.ITunesApi
 import com.listener.data.remote.api.OpenAiApi
 import dagger.Module
@@ -80,5 +81,22 @@ object NetworkModule {
     @Singleton
     fun provideOpenAiApi(@Named("OpenAI") retrofit: Retrofit): OpenAiApi {
         return retrofit.create(OpenAiApi::class.java)
+    }
+
+    @Provides
+    @Singleton
+    @Named("Groq")
+    fun provideGroqRetrofit(okHttpClient: OkHttpClient): Retrofit {
+        return Retrofit.Builder()
+            .baseUrl("https://api.groq.com/")
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+    }
+
+    @Provides
+    @Singleton
+    fun provideGroqApi(@Named("Groq") retrofit: Retrofit): GroqApi {
+        return retrofit.create(GroqApi::class.java)
     }
 }

@@ -108,24 +108,18 @@ fun HomeScreen(
                             )
                         }
 
-                        item {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(
-                                    items = uiState.recentLearnings,
-                                    key = { it.sourceId }
-                                ) { learning ->
-                                    RecentLearningCard(
-                                        learning = learning,
-                                        onClick = { onNavigateToPlayer(learning.sourceId) }
-                                    )
-                                }
-                            }
+                        items(
+                            items = uiState.recentLearnings,
+                            key = { it.sourceId }
+                        ) { learning ->
+                            RecentLearningItem(
+                                learning = learning,
+                                onClick = { onNavigateToPlayer(learning.sourceId) },
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
                         }
 
-                        item { Spacer(modifier = Modifier.height(24.dp)) }
+                        item { Spacer(modifier = Modifier.height(16.dp)) }
                     }
 
                     // New Episodes Section
@@ -143,6 +137,7 @@ fun HomeScreen(
                         ) { episode ->
                             NewEpisodeItem(
                                 episode = episode,
+                                podcastName = uiState.podcastNames[episode.feedUrl],
                                 onClick = { selectedEpisode = episode },
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
                             )
@@ -297,9 +292,10 @@ private fun SectionHeader(
 }
 
 @Composable
-private fun RecentLearningCard(
+private fun RecentLearningItem(
     learning: RecentLearningEntity,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val progress = if (learning.totalChunks > 0) {
         learning.currentChunkIndex.toFloat() / learning.totalChunks
@@ -308,22 +304,30 @@ private fun RecentLearningCard(
     ListenerCard(
         title = learning.title,
         subtitle = learning.subtitle,
-        imageUrl = learning.thumbnailUrl,
         progress = progress,
         onClick = onClick,
-        modifier = Modifier.width(280.dp)
+        modifier = modifier
     )
 }
 
 @Composable
 private fun NewEpisodeItem(
     episode: PodcastEpisodeEntity,
+    podcastName: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val subtitle = buildString {
+        podcastName?.let { append(it) }
+        episode.durationMs?.let {
+            if (isNotEmpty()) append(" · ")
+            append(formatDuration(it))
+        }
+    }
+
     ListenerCard(
         title = episode.title,
-        subtitle = formatDuration(episode.durationMs),
+        subtitle = subtitle,
         badge = if (episode.isNew) "NEW" else null,
         onClick = onClick,
         modifier = modifier
