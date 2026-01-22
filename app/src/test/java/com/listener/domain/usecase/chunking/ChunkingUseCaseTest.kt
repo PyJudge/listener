@@ -368,4 +368,228 @@ class ChunkingUseCaseTest {
         // displayText가 sentence에서 생성됨 (구두점 보존)
         assertEquals("Hello, world!", chunks[0].displayText)
     }
+
+    // ===== 드리프트 시뮬레이션 테스트 =====
+
+    /**
+     * 드리프트 문제 시뮬레이션
+     *
+     * 문제 상황:
+     * - 300개 이상의 청크를 처리할 때 wordIdx 누적 오차 발생
+     * - findStartIndex가 실패하면 누적된 wordIdx를 사용 → 드리프트 고착
+     *
+     * 이 테스트는 다음을 검증:
+     * 1. 모든 청크의 displayText 첫 단어가 startMs 시간의 실제 단어와 일치
+     * 2. 누적 오차 없이 시간 기반으로 정확한 위치 찾기
+     */
+    @Test
+    fun `drift simulation - first word must match at startMs after many chunks`() {
+        // 300개 문장 생성 (드리프트가 발생하는 상황 시뮬레이션)
+        val sentenceCount = 300
+        val wordsPerSentence = 5
+        val wordDuration = 0.3 // 각 단어 0.3초
+        val gapBetweenSentences = 0.2 // 문장 간 0.2초 gap
+
+        val segments = mutableListOf<Segment>()
+        val words = mutableListOf<Word>()
+
+        var currentTime = 0.0
+
+        for (i in 0 until sentenceCount) {
+            val sentenceWords = mutableListOf<String>()
+            val sentenceStart = currentTime
+
+            // 각 문장에 고유한 첫 단어 + 일반 단어들
+            for (j in 0 until wordsPerSentence) {
+                val wordText = if (j == 0) {
+                    "Word${i}" // 첫 단어는 고유하게 (Word0, Word1, Word2...)
+                } else if (j == wordsPerSentence - 1) {
+                    "end." // 마지막 단어
+                } else {
+                    "common" // 중간 단어는 반복 (드리프트 유발 가능)
+                }
+
+                words.add(Word(
+                    word = wordText,
+                    start = currentTime,
+                    end = currentTime + wordDuration
+                ))
+                sentenceWords.add(wordText)
+                currentTime += wordDuration
+            }
+
+            val sentenceText = sentenceWords.joinToString(" ")
+            segments.add(Segment(
+                start = sentenceStart,
+                end = currentTime,
+                text = sentenceText
+            ))
+
+            currentTime += gapBetweenSentences
+        }
+
+        val whisperResult = WhisperResult(
+            text = segments.joinToString(" ") { it.text },
+            segments = segments,
+            words = words
+        )
+
+        val chunks = chunkingUseCase.process(whisperResult, minChunkMs = 0)
+
+        // 검증: 모든 청크의 첫 단어가 startMs 시간과 일치해야 함
+        val mismatches = mutableListOf<String>()
+
+        for (chunk in chunks) {
+            val chunkFirstWord = chunk.displayText.split(Regex("\\s+")).firstOrNull()
+                ?.lowercase()?.replace(Regex("[^a-z0-9]"), "") ?: continue
+
+            val startSec = chunk.startMs / 1000.0
+            val tolerance = 0.05 // 50ms
+
+            // startMs 시간에 가장 가까운 단어 찾기
+            val nearestWord = words.minByOrNull { kotlin.math.abs(it.start - startSec) }
+            val nearestWordNorm = nearestWord?.word?.lowercase()?.replace(Regex("[^a-z0-9]"), "") ?: ""
+
+            val timeDiff = kotlin.math.abs((nearestWord?.start ?: 0.0) - startSec)
+
+            if (timeDiff > tolerance || nearestWordNorm != chunkFirstWord) {
+                mismatches.add(
+                    "Chunk ${chunk.orderIndex}: text='$chunkFirstWord' @${chunk.startMs}ms, " +
+                        "actual='${nearestWord?.word}' @${((nearestWord?.start ?: 0.0) * 1000).toLong()}ms"
+                )
+            }
+        }
+
+        assertTrue(
+            "DRIFT DETECTED! ${mismatches.size} mismatches in $sentenceCount chunks:\n" +
+                mismatches.take(10).joinToString("\n"),
+            mismatches.isEmpty()
+        )
+    }
+
+    /**
+     * 드리프트 시뮬레이션 - wordIdx 누적 오차로 인한 드리프트
+     *
+     * 시나리오:
+     * - segment 텍스트: "AAA. BBB. CCC."
+     * - words 배열: 각 단어마다 word가 1개씩 더 있음 (Whisper가 추가 단어 출력)
+     * - 결과: wordIdx가 점점 뒤로 밀림 → 마지막 문장의 startMs가 틀어짐
+     *
+     * 핵심: wordIdx 누적 방식은 Whisper의 추가/누락 단어에 취약
+     */
+    @Test
+    fun `drift due to wordIdx accumulation - extra words cause offset`() {
+        // 시나리오: Whisper가 각 문장마다 추가 단어를 출력
+        val segments = listOf(
+            Segment(start = 0.0, end = 2.0, text = "First sentence."),
+            Segment(start = 2.5, end = 4.5, text = "Second sentence."),
+            Segment(start = 5.0, end = 7.0, text = "Third sentence."),
+            Segment(start = 7.5, end = 9.5, text = "Fourth sentence."),
+            Segment(start = 10.0, end = 12.0, text = "Final sentence.")
+        )
+
+        val words = listOf(
+            // 첫 문장 + 추가 단어
+            Word(word = "First", start = 0.0, end = 0.4),
+            Word(word = "sentence.", start = 0.4, end = 0.8),
+            Word(word = "um", start = 1.0, end = 1.2),  // 추가 단어 (filler)
+
+            // 두 번째 문장 + 추가 단어
+            Word(word = "Second", start = 2.5, end = 2.9),
+            Word(word = "sentence.", start = 2.9, end = 3.3),
+            Word(word = "uh", start = 3.5, end = 3.7),  // 추가 단어
+
+            // 세 번째 문장 + 추가 단어
+            Word(word = "Third", start = 5.0, end = 5.4),
+            Word(word = "sentence.", start = 5.4, end = 5.8),
+            Word(word = "yeah", start = 6.0, end = 6.2),  // 추가 단어
+
+            // 네 번째 문장 + 추가 단어
+            Word(word = "Fourth", start = 7.5, end = 7.9),
+            Word(word = "sentence.", start = 7.9, end = 8.3),
+            Word(word = "so", start = 8.5, end = 8.7),  // 추가 단어
+
+            // 다섯 번째 문장 (Final) - startMs는 10000ms여야 함
+            Word(word = "Final", start = 10.0, end = 10.4),
+            Word(word = "sentence.", start = 10.4, end = 10.8)
+        )
+
+        val whisperResult = WhisperResult(
+            text = segments.joinToString(" ") { it.text },
+            segments = segments,
+            words = words
+        )
+
+        val chunks = chunkingUseCase.process(whisperResult, minChunkMs = 0)
+
+        // Final sentence 청크 찾기
+        val finalChunk = chunks.find { it.displayText.contains("Final") }
+        assertNotNull("Should have 'Final sentence.' chunk", finalChunk)
+
+        // 핵심 검증: Final의 startMs는 10000ms여야 함
+        // 드리프트가 있으면 wordIdx가 밀려서 다른 위치를 가리킴
+        val expectedStartMs = 10000L
+        val tolerance = 100L
+
+        assertTrue(
+            "DRIFT! Final chunk startMs (${finalChunk!!.startMs}) should be ${expectedStartMs}ms ± ${tolerance}ms. " +
+                "If using accumulated wordIdx with extra words, it will be wrong.",
+            kotlin.math.abs(finalChunk.startMs - expectedStartMs) <= tolerance
+        )
+    }
+
+    /**
+     * 드리프트 시뮬레이션 - findStartIndex 검색 범위 밖 문제
+     *
+     * 시나리오:
+     * - 청크 처리 중 wordIdx가 실제 위치보다 뒤처짐
+     * - maxSearch = wordIdx + wordCount*3 + 100 범위에 실제 단어가 없음
+     * - findStartIndex 실패 → wordIdx fallback → 드리프트 고착
+     */
+    @Test
+    fun `drift when actual position is outside search range`() {
+        // 시나리오: words에 큰 gap이 있어서 wordIdx가 실제 위치에서 많이 벗어남
+        val segments = listOf(
+            Segment(start = 0.0, end = 1.0, text = "Start here."),
+            Segment(start = 50.0, end = 51.0, text = "Far away.")  // 50초 뒤!
+        )
+
+        // words: 첫 문장은 정상, 두 번째 문장은 50초 뒤
+        val words = mutableListOf<Word>()
+
+        // 첫 문장
+        words.add(Word(word = "Start", start = 0.0, end = 0.3))
+        words.add(Word(word = "here.", start = 0.3, end = 0.6))
+
+        // 중간에 많은 filler words (예: 팟캐스트 광고 구간)
+        for (i in 1..200) {
+            words.add(Word(word = "ad$i", start = i * 0.2, end = i * 0.2 + 0.1))
+        }
+
+        // 두 번째 문장 (50초 위치)
+        words.add(Word(word = "Far", start = 50.0, end = 50.3))
+        words.add(Word(word = "away.", start = 50.3, end = 50.6))
+
+        val whisperResult = WhisperResult(
+            text = segments.joinToString(" ") { it.text },
+            segments = segments,
+            words = words
+        )
+
+        val chunks = chunkingUseCase.process(whisperResult, minChunkMs = 0)
+
+        // "Far away." 청크 찾기
+        val farChunk = chunks.find { it.displayText.contains("Far") }
+        assertNotNull("Should have 'Far away.' chunk", farChunk)
+
+        // 핵심 검증: startMs는 50000ms여야 함
+        val expectedStartMs = 50000L
+        val tolerance = 100L
+
+        assertTrue(
+            "DRIFT! 'Far away.' startMs (${farChunk!!.startMs}) should be ${expectedStartMs}ms. " +
+                "If wordIdx-based search failed, it will be at wrong position.",
+            kotlin.math.abs(farChunk.startMs - expectedStartMs) <= tolerance
+        )
+    }
 }
