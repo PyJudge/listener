@@ -97,7 +97,7 @@ class SettingsRepository @Inject constructor(
 
     suspend fun setMinChunkMs(ms: Long) {
         dataStore.edit {
-            it[Keys.MIN_CHUNK_MS] = ms.coerceIn(500L, 3000L)
+            it[Keys.MIN_CHUNK_MS] = ms.coerceIn(500L, 5000L)  // 5초까지 허용
             it[Keys.PENDING_RECHUNK] = true
         }
     }

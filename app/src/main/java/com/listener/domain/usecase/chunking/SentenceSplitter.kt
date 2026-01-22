@@ -23,7 +23,15 @@ class SentenceSplitter @Inject constructor() {
         // 측정
         "hr", "hrs", "min", "sec", "lb", "lbs", "oz", "ft", "in", "cm", "km", "kg", "mg", "ml", "pt", "qt", "gal",
         // 국가
-        "us", "usa", "uk", "eu"
+        "us", "usa", "uk", "eu",
+        // 웹
+        "www"
+    )
+
+    // 도메인 확장자 (소문자)
+    private val domainExtensions = setOf(
+        "com", "net", "org", "edu", "gov", "io", "co", "ai", "app",
+        "dev", "me", "info", "biz", "tv", "fm", "ly", "to"
     )
 
     fun split(text: String, sentenceOnly: Boolean = true): List<String> {
@@ -43,9 +51,15 @@ class SentenceSplitter @Inject constructor() {
                     current.append(text[i])
                 }
 
-                // 마침표인 경우 약어인지 확인
+                // 마침표인 경우 약어 또는 도메인인지 확인
                 val shouldSplit = if (char == '.') {
-                    !isAbbreviation(current.toString())
+                    // Look-ahead: 다음 단어가 도메인 확장자인지 확인
+                    val nextWord = extractNextWord(text, i + 1)
+                    if (nextWord.lowercase() in domainExtensions) {
+                        false  // 도메인 확장자면 split 안 함
+                    } else {
+                        !isAbbreviation(current.toString())
+                    }
                 } else {
                     true // ! 또는 ?는 항상 문장 끝
                 }
@@ -71,7 +85,7 @@ class SentenceSplitter @Inject constructor() {
     }
 
     /**
-     * 현재 텍스트가 약어로 끝나는지 확인
+     * 현재 텍스트가 약어 또는 도메인으로 끝나는지 확인
      */
     private fun isAbbreviation(text: String): Boolean {
         val lastWord = extractLastWord(text)
@@ -89,7 +103,40 @@ class SentenceSplitter @Inject constructor() {
         // 3. U.S.A. 패턴 (글자.글자.글자.)
         if (lastWord.matches(Regex("([A-Za-z]\\.){2,}"))) return true
 
+        // 4. 도메인 주소 패턴 (example.com, www.site.net)
+        if (isDomainAddress(lastWord)) return true
+
         return false
+    }
+
+    /**
+     * 도메인 주소인지 확인 (example.com, www.site.org 등)
+     */
+    private fun isDomainAddress(word: String): Boolean {
+        val lower = word.lowercase()
+
+        // 마지막 마침표 이후의 부분이 도메인 확장자인지 확인
+        val lastDotIndex = lower.lastIndexOf('.')
+        if (lastDotIndex <= 0) return false
+
+        val extension = lower.substring(lastDotIndex + 1)
+        val beforeDot = lower.substring(0, lastDotIndex)
+
+        // 확장자가 도메인 목록에 있고, 앞부분이 비어있지 않으면 도메인
+        return extension in domainExtensions && beforeDot.isNotEmpty()
+    }
+
+    /**
+     * 주어진 위치부터 다음 단어(공백/구두점 전까지) 추출
+     */
+    private fun extractNextWord(text: String, startIndex: Int): String {
+        if (startIndex >= text.length) return ""
+
+        var end = startIndex
+        while (end < text.length && text[end].isLetterOrDigit()) {
+            end++
+        }
+        return text.substring(startIndex, end)
     }
 
     private fun extractLastWord(text: String): String {

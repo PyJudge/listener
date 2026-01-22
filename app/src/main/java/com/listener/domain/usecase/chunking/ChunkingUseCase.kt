@@ -51,7 +51,7 @@ class ChunkingUseCase @Inject constructor(
             }
         }
 
-        // 3. 각 문장에 타임스탬프 매칭 (ankigpt 방식)
+        // 3. 각 문장에 타임스탬프 매칭 (첫 단어 강제 동기화 방식)
         val rawChunks = mutableListOf<Chunk>()
         var wordIdx = 0
         var prevEndMs = 0L  // 시간순 보장용
@@ -63,17 +63,26 @@ class ChunkingUseCase @Inject constructor(
             val sentenceWords = sentence.split(Regex("\\s+")).filter { it.isNotEmpty() }
             val wordCount = sentenceWords.size
 
-            // 시작 인덱스 (이 chunk가 사용할 word 범위의 시작)
-            val startWordIdx = wordIdx
-
-            // 검색 범위 제한 (ankigpt 핵심)
+            // 검색 범위 제한
             val maxSearch = minOf(wordIdx + wordCount * 3 + 100, words.size)
+
+            // [핵심] 첫 단어 강제 동기화: 문장의 첫 단어를 words에서 직접 찾음
+            // 드리프트 방지 - 이전 청크 오차가 누적되지 않음
+            val foundStartIdx = timestampMatcher.findStartIndex(
+                sentenceWords = sentenceWords,
+                allWords = words,
+                searchStartIndex = wordIdx,
+                maxSearchIndex = maxSearch
+            )
+
+            // 시작 인덱스: 찾으면 그 위치, 못 찾으면 현재 wordIdx 사용
+            val startWordIdx = foundStartIdx ?: wordIdx
 
             // 마지막 N개 단어로 매칭하여 끝 인덱스 찾기
             val matchResult = timestampMatcher.findEndTimestamp(
                 sentenceWords = sentenceWords,
                 allWords = words,
-                startWordIndex = wordIdx,
+                startWordIndex = startWordIdx,
                 maxSearchIndex = maxSearch,
                 sentenceStartTime = words.getOrNull(startWordIdx)?.start ?: 0.0
             )
@@ -83,7 +92,7 @@ class ChunkingUseCase @Inject constructor(
                 matchResult.second - 1
             } else {
                 // Fallback: 단어 수만큼 전진
-                minOf(wordIdx + wordCount - 1, words.size - 1).coerceAtLeast(startWordIdx)
+                minOf(startWordIdx + wordCount - 1, words.size - 1).coerceAtLeast(startWordIdx)
             }
 
             // 다음 chunk의 시작 인덱스

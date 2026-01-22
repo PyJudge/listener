@@ -284,6 +284,41 @@ app/src/main/java/com/listener/
 
 ---
 
+## 핵심 불변조건 (INVARIANTS)
+
+### Chunk 동기화 규칙 (절대 위반 금지)
+
+```
+Chunk의 displayText와 (startMs, endMs)는 반드시 동기화되어야 한다.
+
+- displayText의 내용이 startMs~endMs 구간에서 실제로 재생되어야 함
+- 이 규칙이 깨지면 사용자가 듣는 소리와 보는 텍스트가 불일치
+- 청킹 알고리즘 수정 시 반드시 실기기에서 재생 테스트 필수
+```
+
+### 검증 방법
+
+```bash
+# 1. 테스트 실행
+./gradlew test --tests "*.ChunkingUseCaseRealDataTest"
+
+# 2. 실기기 DB에서 청크 검증
+adb exec-out run-as com.listener cat databases/listener_database > /tmp/db.db
+sqlite3 /tmp/db.db "SELECT MAX(endMs-startMs)/1000.0 as maxSec FROM chunks"
+# 결과: 30초 이하여야 정상
+
+# 3. 실기기에서 직접 재생하며 싱크 확인
+```
+
+### 청킹 수정 시 체크리스트
+
+- [ ] `ChunkingUseCaseRealDataTest` 5개 테스트 PASS
+- [ ] 실기기 캐시 삭제 후 새로 전사
+- [ ] 최소 3개 청크 재생하며 싱크 확인
+- [ ] 최대 청크 길이 30초 이하 확인
+
+---
+
 ## SPEC 참조
 
 전체 기능 명세는 `SPEC.md` 참조:

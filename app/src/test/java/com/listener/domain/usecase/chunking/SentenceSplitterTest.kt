@@ -282,4 +282,91 @@ class SentenceSplitterTest {
         assertEquals("Two.", result[1])
         assertEquals("Three", result[2])
     }
+
+    // ===== 도메인 주소 테스트 (TDD) =====
+
+    @Test
+    fun `do not split on dot com`() {
+        val result = splitter.split("Go to 8sleep.com for more info.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Go to 8sleep.com for more info.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot net`() {
+        val result = splitter.split("Visit example.net today.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Visit example.net today.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot org`() {
+        val result = splitter.split("Check wikipedia.org for details.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Check wikipedia.org for details.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot io`() {
+        val result = splitter.split("Try github.io pages.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Try github.io pages.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot co`() {
+        val result = splitter.split("Use bit.co links.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Use bit.co links.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot edu`() {
+        val result = splitter.split("Stanford.edu has courses.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Stanford.edu has courses.", result[0])
+    }
+
+    @Test
+    fun `do not split on dot gov`() {
+        val result = splitter.split("Check irs.gov for forms.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Check irs.gov for forms.", result[0])
+    }
+
+    @Test
+    fun `handle domain with path`() {
+        val result = splitter.split("Go to huberman.com/episodes for more.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Go to huberman.com/episodes for more.", result[0])
+    }
+
+    @Test
+    fun `handle domain at end of sentence`() {
+        val result = splitter.split("Visit 8sleep.com. It's great.", sentenceOnly = true)
+        assertEquals(2, result.size)
+        assertEquals("Visit 8sleep.com.", result[0])
+        assertEquals("It's great.", result[1])
+    }
+
+    @Test
+    fun `handle subdomain`() {
+        val result = splitter.split("Go to www.example.com for info.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Go to www.example.com for info.", result[0])
+    }
+
+    @Test
+    fun `handle multiple domains in sentence`() {
+        val result = splitter.split("Try google.com or bing.com for search.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Try google.com or bing.com for search.", result[0])
+    }
+
+    @Test
+    fun `real podcast example - 8sleep`() {
+        val result = splitter.split("If you'd like to try 8sleep, go to 8sleep.com slash Huberman to get up to 350 off.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("If you'd like to try 8sleep, go to 8sleep.com slash Huberman to get up to 350 off.", result[0])
+    }
 }
