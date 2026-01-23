@@ -234,18 +234,21 @@ private fun SuccessContent(
         label = "headerScale"
     )
 
+    // 첫 로딩 중에는 PullToRefreshBox 대신 LoadingState만 표시 (스피너 중복 방지)
+    if (isRefreshing && episodes.isEmpty()) {
+        LoadingState(
+            message = "Loading episodes...",
+            modifier = modifier.fillMaxSize()
+        )
+        return
+    }
+
     PullToRefreshBox(
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
         modifier = modifier.fillMaxSize()
     ) {
-        if (isRefreshing && episodes.isEmpty()) {
-            // 첫 로딩 중 - 로딩 표시
-            LoadingState(
-                message = "Loading episodes...",
-                modifier = Modifier.fillMaxSize()
-            )
-        } else if (episodes.isEmpty()) {
+        if (episodes.isEmpty()) {
             // 로딩 완료 후 에피소드 없음
             EmptyState(
                 icon = Icons.Outlined.Podcasts,
