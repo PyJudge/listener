@@ -312,7 +312,7 @@ class PlaybackService : MediaSessionService() {
                     playCurrentChunk()
                     updatePlaybackState {
                         copy(
-                            currentChunkIndex = currentChunkIndex,
+                            currentChunkIndex = this@PlaybackService.currentChunkIndex,
                             learningState = stateMachine.state.value
                         )
                     }
@@ -334,7 +334,7 @@ class PlaybackService : MediaSessionService() {
                     playCurrentChunk()
                     updatePlaybackState {
                         copy(
-                            currentChunkIndex = currentChunkIndex,
+                            currentChunkIndex = this@PlaybackService.currentChunkIndex,
                             learningState = stateMachine.state.value
                         )
                     }
@@ -370,7 +370,7 @@ class PlaybackService : MediaSessionService() {
                     playCurrentChunk()
                     updatePlaybackState {
                         copy(
-                            currentChunkIndex = currentChunkIndex,
+                            currentChunkIndex = this@PlaybackService.currentChunkIndex,
                             learningState = stateMachine.state.value
                         )
                     }
