@@ -208,7 +208,12 @@ fun ListenerNavHost(
             val sourceId = backStackEntry.arguments?.getString("sourceId") ?: ""
             FullScreenPlayerScreen(
                 sourceId = sourceId,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
+                onNavigateToTranscription = { transcriptionSourceId ->
+                    // D2: 전사 미완료 시 TranscriptionScreen으로 이동
+                    navController.popBackStack()
+                    navController.navigate(Screen.Transcription.createRoute(transcriptionSourceId))
+                }
             )
         }
     }

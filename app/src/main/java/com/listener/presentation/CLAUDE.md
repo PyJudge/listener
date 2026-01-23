@@ -1,5 +1,30 @@
 # CLAUDE.md - Presentation 계층
 
+## ⚠️ 수정 시 주의사항
+
+### 플레이어 네비게이션 이벤트
+- 플레이어 화면에서 전사 화면으로 자동 이동 기능 있음
+- 청크가 0개일 때 전사 화면으로 이동 이벤트 발행
+- **FullScreenPlayerScreen에서 이벤트를 반드시 관찰해야 함** (안 하면 "no content" 화면 멈춤)
+- 이벤트 처리 후 이벤트 소비 함수 호출 필수
+
+### 청크 탐색 Debounce
+- seekBar나 청크 리스트 연타 시 마지막 요청만 처리 (300ms debounce)
+- **다음/이전 청크 버튼은 debounce 없음** (모든 요청 순차 처리)
+- 5번 연속 "다음" 누르면 5개 청크 이동해야 함
+
+### 플레이리스트 자동 전환
+- 현재 아이템의 마지막 청크 완료 시 다음 아이템으로 자동 전환
+- 플레이리스트 모드일 때만 동작
+- **백그라운드에서도 동작해야 함** (화면 꺼도 다음 아이템 재생)
+
+### 전사 미완료 에피소드 선택 시
+- 청크가 0개인 에피소드 선택하면 자동으로 전사 화면으로 이동
+- FullScreenPlayerScreen → ListenerNavHost 콜백 연결 필수
+- 콜백 누락 시 "no content" 화면 멈춤
+
+---
+
 ## 핵심 불변조건 (INVARIANTS)
 
 ```
@@ -12,81 +37,32 @@
 
 ## 알려진 문제점
 
-### HIGH - PlayerViewModel 재주입
+### HIGH - 플레이어 ViewModel 재생성
+**현상:** 화면 전환 시 플레이어 상태(재생 위치, 현재 청크)가 유실됨
+**원인:** MainScreen에서 ViewModel이 매번 새로 생성됨
+**해결책:** DI에서 싱글톤으로 바인딩하거나 Activity 범위 ViewModel 사용
 
-**현상:** MainScreen에서 PlayerViewModel이 매번 새로 주입되어 재생 상태 유실
+### HIGH - 플레이어 화면 진입 시 재로드
+**현상:** 같은 에피소드인데 화면 전환할 때마다 처음부터 다시 로드
+**해결책:** 이미 로드된 콘텐츠면 재로드 스킵
 
-**위치:** `MainScreen.kt` 라인 34
+### HIGH - 플레이리스트 현재 재생 항목 표시 오류
+**현상:** 플레이리스트에서 "현재 재생 중" 표시가 실제 재생 상태와 다름
+**원인:** 첫 번째 미완료 항목을 현재 항목으로 가정
+**해결책:** 실제 재생 중인 sourceId와 비교
 
-**현재 코드:**
-```kotlin
-fun MainScreen(
-    playerViewModel: PlayerViewModel = hiltViewModel(),  // 문제
-    ...
-)
-```
+### MEDIUM - 홈 화면 UI 깜빡임
+**현상:** 홈 화면 로드 시 데이터가 순차적으로 표시되며 깜빡임
+**원인:** 4개의 독립적인 데이터 스트림을 개별 구독
+**해결책:** combine으로 한 번에 상태 업데이트
 
-**해결책:** DI에서 `@Singleton` 바인딩 또는 Activity 범위 ViewModel
-
-### HIGH - 플레이어 상태 유실 (매번 재로드)
-
-**현상:** 화면 전환 시 `loadBySourceId()` 재호출로 진행률 초기화
-
-**위치:** `FullScreenPlayerScreen.kt` 라인 120-124
-
-**해결책:** 이미 로드된 sourceId면 재로드 스킵
-
-```kotlin
-LaunchedEffect(sourceId) {
-    if (sourceId.isNotEmpty() && sourceId != viewModel.currentSourceId) {
-        viewModel.loadBySourceId(sourceId)
-    }
-}
-```
-
-### HIGH - 플레이리스트 현재 항목 결정 오류
-
-**현상:** `isCurrent`가 첫 번째 미완료 항목으로 결정되지만 실제 재생 상태와 불일치 가능
-
-**위치:** `PlaylistDetailViewModel.kt` 라인 113-115
-
-**해결책:** RecentLearningDao에서 현재 활성 sourceId 조회
-
-### MEDIUM - HomeViewModel 데이터 동기화 지연
-
-**현상:** 4개의 독립적인 Flow 구독으로 UI 깜빡임
-
-**위치:** `HomeViewModel.kt` 라인 54-59
-
-**해결책:** `combine()` 사용
-```kotlin
-combine(
-    recentLearningDao.getRecentLearnings(5),
-    podcastDao.getAllSubscriptions(),
-    podcastDao.getNewEpisodeCount(),
-    ...
-) { learnings, subscriptions, count, ... ->
-    // 한 번에 상태 업데이트
-}
-```
-
-### MEDIUM - MiniPlayer 메타데이터 표시 오류
-
+### MEDIUM - 미니 플레이어 "No content" 표시
 **현상:** 플레이어에서 뒤로 나가면 미니 플레이어에 "No content" 표시
+**원인:** 메타데이터가 상태 스트림이 아닌 일반 변수로 관리됨
 
-**원인:** PlayerViewModel 메타데이터가 메모리 변수로 관리 (StateFlow 아님)
-
-**위치:** `PlayerViewModel.kt` 라인 79-82
-
-**해결책:** 메타데이터를 StateFlow로 관리
-
-### MEDIUM - 에러 메시지 2초 자동 dismiss
-
-**현상:** TranscriptionScreen 에러 발생 시 2초 후 자동 뒤로가기
-
-**위치:** `TranscriptionScreen.kt` 라인 59-62
-
-**문제:** 사용자가 에러 메시지 읽을 시간 부족
+### MEDIUM - 전사 에러 메시지 너무 빨리 사라짐
+**현상:** 전사 실패 시 에러 메시지가 2초 후 자동으로 화면 닫힘
+**문제:** 사용자가 에러 내용을 읽기 어려움
 
 ---
 

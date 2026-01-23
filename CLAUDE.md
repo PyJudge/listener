@@ -1,5 +1,21 @@
 # CLAUDE.md - Listener Android App
 
+## ⛔ 절대 금지 규칙
+
+```
+1. 청크 텍스트와 음성 싱크 깨짐 금지
+   - 청크의 displayText는 startMs~endMs 구간의 실제 음성과 일치해야 함
+   - 특히 첫 번째 청크의 시작 부분이 중요
+   - 수정 후 반드시 실기기에서 재생하며 싱크 확인
+
+2. 에러 디버깅 시 사용자 데이터 삭제 금지
+   - Room DB 충돌 → fallbackToDestructiveMigration 또는 버전 업
+   - "pm clear" 사용 전 반드시 사용자 확인
+   - 에러 재현용 데이터 삭제되면 디버깅 불가능
+```
+
+---
+
 ## 프로젝트 현황
 
 | 항목 | 값 |
@@ -148,9 +164,19 @@ emulator -avd Pixel_8_API_35 &
 | ChunkMerger | `domain/usecase/chunking/ChunkMergerTest.kt` |
 | DuplicateRemover | `domain/usecase/chunking/DuplicateRemoverTest.kt` |
 | LearningStateMachine | `service/LearningStateMachineTest.kt` |
+| LearningStateMachineGap | `service/LearningStateMachineGapTest.kt` |
 | RechunkUseCase | `domain/usecase/RechunkUseCaseTest.kt` |
 | HomeViewModel | `presentation/home/HomeViewModelTest.kt` |
 | PlaylistViewModel | `presentation/playlist/PlaylistViewModelTest.kt` |
+| PlayerViewModelNavigation | `presentation/player/PlayerViewModelNavigationTest.kt` |
+| PlayerViewModelPlaylistAutoAdvance | `presentation/player/PlayerViewModelPlaylistAutoAdvanceTest.kt` |
+| PlayerViewModelTranscriptionCheck | `presentation/player/PlayerViewModelTranscriptionCheckTest.kt` |
+| RecordingManagerStorage | `service/RecordingManagerStorageTest.kt` |
+| RecordingManagerPauseResume | `service/RecordingManagerPauseResumeTest.kt` |
+| PlaybackServiceProgressSave | `service/PlaybackServiceProgressSaveTest.kt` |
+| PlaybackServiceAudioFocus | `service/PlaybackServiceAudioFocusTest.kt` |
+| PlaybackServiceMediaSession | `service/PlaybackServiceMediaSessionTest.kt` |
+| PlaybackStateError | `domain/model/PlaybackStateErrorTest.kt` |
 
 ### Instrumented Tests (`src/androidTest/`)
 

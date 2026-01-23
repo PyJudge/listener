@@ -111,6 +111,7 @@ private val SurfaceDarkBg = SurfaceDark
 fun FullScreenPlayerScreen(
     sourceId: String = "",
     onNavigateBack: () -> Unit = {},
+    onNavigateToTranscription: (String) -> Unit = {},
     viewModel: PlayerViewModel = hiltViewModel()
 ) {
     val playbackState by viewModel.playbackState.collectAsStateWithLifecycle()
@@ -118,6 +119,7 @@ fun FullScreenPlayerScreen(
     val playlistId by viewModel.playlistId.collectAsStateWithLifecycle()
     val playlistItems by viewModel.playlistItems.collectAsStateWithLifecycle()
     val currentPlaylistItemIndex by viewModel.currentPlaylistItemIndex.collectAsStateWithLifecycle()
+    val navigationEvent by viewModel.navigationEvent.collectAsStateWithLifecycle()
 
     // BUG-C3 Fix: Context for Toast
     val context = LocalContext.current
@@ -125,6 +127,17 @@ fun FullScreenPlayerScreen(
     LaunchedEffect(sourceId) {
         if (sourceId.isNotEmpty()) {
             viewModel.loadBySourceId(sourceId)
+        }
+    }
+
+    // D2: 전사 미완료 시 TranscriptionScreen으로 이동
+    LaunchedEffect(navigationEvent) {
+        when (val event = navigationEvent) {
+            is PlayerNavigationEvent.NavigateToTranscription -> {
+                viewModel.consumeNavigationEvent()
+                onNavigateToTranscription(event.sourceId)
+            }
+            PlayerNavigationEvent.None -> { /* no-op */ }
         }
     }
 
