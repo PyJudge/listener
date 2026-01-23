@@ -326,6 +326,9 @@ class TranscriptionRepositoryImpl @Inject constructor(
 
             saveChunks(sourceId, chunks)
 
+            // 전사 성공 시 에피소드를 읽음 처리 (new 표시 제거)
+            podcastRepository.markEpisodeAsRead(sourceId)
+
             Log.d(TAG, "Transcription complete: $sourceId, ${chunks.size} chunks")
             _transcriptionState.value = TranscriptionState.Complete(
                 sourceId = sourceId,

@@ -41,6 +41,7 @@ import com.listener.presentation.theme.ListenerTheme
 fun TranscriptionScreen(
     sourceId: String,
     onNavigateBack: () -> Unit = {},
+    onNavigateToSettings: () -> Unit = {},
     onTranscriptionComplete: () -> Unit = {},
     viewModel: TranscriptionViewModel = hiltViewModel()
 ) {
@@ -51,14 +52,18 @@ fun TranscriptionScreen(
         label = "progress"
     )
 
-    // Navigate when complete or error
-    LaunchedEffect(uiState.step) {
+    // API 키 에러인지 확인
+    val isApiKeyError = uiState.step == UiTranscriptionStep.ERROR &&
+            uiState.errorMessage?.contains("API 키") == true
+
+    // Navigate when complete (API 키 에러는 자동 뒤로가기 안 함)
+    LaunchedEffect(uiState.step, isApiKeyError) {
         if (uiState.step == UiTranscriptionStep.COMPLETE) {
             onTranscriptionComplete()
         }
-        if (uiState.step == UiTranscriptionStep.ERROR) {
-            // 에러 메시지 확인 시간 후 자동 뒤로가기
-            delay(2000)
+        if (uiState.step == UiTranscriptionStep.ERROR && !isApiKeyError) {
+            // API 키 에러가 아닌 경우에만 자동 뒤로가기
+            delay(3000)
             onNavigateBack()
         }
     }

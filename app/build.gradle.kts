@@ -30,6 +30,12 @@ android {
         }
 
         buildConfigField("String", "OPENAI_API_KEY", "\"${localProperties.getProperty("OPENAI_API_KEY", "")}\"")
+        buildConfigField("String", "GROQ_API_KEY", "\"${localProperties.getProperty("GROQ_API_KEY", "")}\"")
+
+        // APK 크기 최적화: arm64-v8a만 포함 (FFmpegKit 네이티브 라이브러리)
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {

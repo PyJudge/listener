@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.listener.BuildConfig
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
@@ -67,7 +68,7 @@ class SettingsRepository @Inject constructor(
                 skipPreprocessingForSmallFiles = prefs[Keys.SKIP_PREPROCESSING] ?: true,
                 transcriptionProvider = prefs[Keys.TRANSCRIPTION_PROVIDER] ?: "groq",
                 openAiApiKey = prefs[Keys.OPENAI_API_KEY] ?: "",
-                groqApiKey = prefs[Keys.GROQ_API_KEY] ?: ""
+                groqApiKey = prefs[Keys.GROQ_API_KEY] ?: BuildConfig.GROQ_API_KEY
             )
         }
 

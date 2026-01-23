@@ -183,7 +183,7 @@ fun PodcastDetailScreen(
                         pubDate = episode.pubDate,
                         onDismiss = { selectedEpisode = null },
                         onStartLearning = {
-                            viewModel.markAsRead(episode.id)
+                            // markAsRead는 전사 성공 후에 호출 (API 키 없음 등으로 실패 시 new 유지)
                             selectedEpisode = null
                             onNavigateToTranscription(episode.id)
                         },
@@ -234,21 +234,19 @@ private fun SuccessContent(
         label = "headerScale"
     )
 
-    // 첫 로딩 중에는 PullToRefreshBox 대신 LoadingState만 표시 (스피너 중복 방지)
-    if (isRefreshing && episodes.isEmpty()) {
-        LoadingState(
-            message = "Loading episodes...",
-            modifier = modifier.fillMaxSize()
-        )
-        return
-    }
-
     PullToRefreshBox(
-        isRefreshing = isRefreshing,
+        // 에피소드가 있을 때만 PullToRefresh 스피너 표시 (첫 로딩 시 스피너 중복 방지)
+        isRefreshing = isRefreshing && episodes.isNotEmpty(),
         onRefresh = onRefresh,
         modifier = modifier.fillMaxSize()
     ) {
-        if (episodes.isEmpty()) {
+        if (isRefreshing && episodes.isEmpty()) {
+            // 첫 로딩 중 - 중앙 스피너만 표시
+            LoadingState(
+                message = "Loading episodes...",
+                modifier = Modifier.fillMaxSize()
+            )
+        } else if (episodes.isEmpty()) {
             // 로딩 완료 후 에피소드 없음
             EmptyState(
                 icon = Icons.Outlined.Podcasts,

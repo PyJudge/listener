@@ -435,6 +435,26 @@ android:allowBackup="false"
 
 ---
 
+## ⚠️ 출시 전 필수 변경사항
+
+```
+□ Groq API 키 제거 (local.properties)
+  - 현재: 개발용 테스트 키가 local.properties에 저장됨
+  - 출시 전: local.properties에서 GROQ_API_KEY 라인 삭제
+  - 사용자가 설정 화면에서 직접 API 키 입력하도록 유도
+
+□ OpenAI API 키 확인
+  - local.properties에서 제거하거나 빈 값으로 설정
+
+□ usesCleartextTraffic="false" 설정
+  - AndroidManifest.xml 수정
+
+□ allowBackup="false" 설정
+  - AndroidManifest.xml 수정
+```
+
+---
+
 ## 테스트 커버리지 현황
 
 | 영역 | 커버리지 | 상태 |
