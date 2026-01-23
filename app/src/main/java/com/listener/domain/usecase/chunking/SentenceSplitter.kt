@@ -51,14 +51,21 @@ class SentenceSplitter @Inject constructor() {
                     current.append(text[i])
                 }
 
-                // 마침표인 경우 약어 또는 도메인인지 확인
+                // 마침표인 경우 약어, 도메인, 소수점인지 확인
                 val shouldSplit = if (char == '.') {
-                    // Look-ahead: 다음 단어가 도메인 확장자인지 확인
-                    val nextWord = extractNextWord(text, i + 1)
-                    if (nextWord.lowercase() in domainExtensions) {
-                        false  // 도메인 확장자면 split 안 함
+                    // 소수점 확인: 앞이 숫자이고 뒤가 숫자면 split 안 함
+                    val prevIsDigit = current.length > 1 && current[current.length - 2].isDigit()
+                    val nextIsDigit = i + 1 < text.length && text[i + 1].isDigit()
+                    if (prevIsDigit && nextIsDigit) {
+                        false  // 소수점이면 split 안 함
                     } else {
-                        !isAbbreviation(current.toString())
+                        // Look-ahead: 다음 단어가 도메인 확장자인지 확인
+                        val nextWord = extractNextWord(text, i + 1)
+                        if (nextWord.lowercase() in domainExtensions) {
+                            false  // 도메인 확장자면 split 안 함
+                        } else {
+                            !isAbbreviation(current.toString())
+                        }
                     }
                 } else {
                     true // ! 또는 ?는 항상 문장 끝

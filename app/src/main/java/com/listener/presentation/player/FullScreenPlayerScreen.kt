@@ -1,8 +1,10 @@
 package com.listener.presentation.player
 
 import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -117,6 +119,9 @@ fun FullScreenPlayerScreen(
     val playlistItems by viewModel.playlistItems.collectAsStateWithLifecycle()
     val currentPlaylistItemIndex by viewModel.currentPlaylistItemIndex.collectAsStateWithLifecycle()
 
+    // BUG-C3 Fix: Context for Toast
+    val context = LocalContext.current
+
     LaunchedEffect(sourceId) {
         if (sourceId.isNotEmpty()) {
             viewModel.loadBySourceId(sourceId)
@@ -124,18 +129,32 @@ fun FullScreenPlayerScreen(
     }
 
     // Permission launcher for RECORD_AUDIO
+    // BUG-C3 Fix: 권한 거부 시 사용자에게 피드백 제공
     val recordPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
             viewModel.onRecordPermissionGranted()
+        } else {
+            // BUG-C3 Fix: 권한 거부 시 토스트 표시하고 LR 모드 유지
+            Toast.makeText(
+                context,
+                "Recording permission denied. Staying in L/R mode.",
+                Toast.LENGTH_SHORT
+            ).show()
         }
-        // If denied, stay in current mode (LR)
     }
 
     var isBlindMode by remember { mutableStateOf(false) }
     var peekingChunkIndex by remember { mutableStateOf<Int?>(null) }
     val listState = rememberLazyListState()
+
+    // A4: 오디오 에러 발생 시 토스트 표시
+    LaunchedEffect(playbackState.error) {
+        playbackState.error?.let { error ->
+            Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+        }
+    }
 
     // Auto-scroll to current chunk (청크 변경, 일시정지, 또는 숨김 모드 전환 시)
     LaunchedEffect(playbackState.currentChunkIndex, playbackState.isPlaying, isBlindMode) {
@@ -477,7 +496,7 @@ private fun ModernChunkItem(
                     }
                 }
 
-                if (isBlindMode && !isPeeking) {
+                if (isBlindMode) {
                     Box(
                         modifier = Modifier
                             .size(32.dp)
@@ -495,7 +514,7 @@ private fun ModernChunkItem(
                         Icon(
                             Icons.Rounded.Visibility,
                             contentDescription = "Peek",
-                            tint = TextMuted,
+                            tint = if (isPeeking) AccentColor else TextMuted,
                             modifier = Modifier.size(18.dp)
                         )
                     }

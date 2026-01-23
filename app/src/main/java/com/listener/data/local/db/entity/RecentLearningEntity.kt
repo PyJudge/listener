@@ -1,9 +1,15 @@
 package com.listener.data.local.db.entity
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
-@Entity(tableName = "recent_learnings")
+@Entity(
+    tableName = "recent_learnings",
+    indices = [
+        Index(value = ["lastAccessedAt"], orders = [Index.Order.DESC])
+    ]
+)
 data class RecentLearningEntity(
     @PrimaryKey val sourceId: String,
     val sourceType: String, // "PODCAST_EPISODE" or "LOCAL_FILE"

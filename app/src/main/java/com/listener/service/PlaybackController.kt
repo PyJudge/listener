@@ -12,10 +12,13 @@ import com.listener.domain.model.LearningState
 import com.listener.domain.model.PlaybackState
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeout
 import com.listener.data.repository.TranscriptionRepositoryImpl
 import java.io.File
 import javax.inject.Inject
@@ -77,7 +80,8 @@ class PlaybackController @Inject constructor(
 
         Log.d(TAG, "Binding to PlaybackService")
         val intent = Intent(context, PlaybackService::class.java)
-        context.startService(intent)
+        // MediaSessionService는 bindService만으로 자동 시작됨
+        // startService() 제거 - 백그라운드에서 BackgroundServiceStartNotAllowedException 방지
         context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
@@ -96,8 +100,9 @@ class PlaybackController @Inject constructor(
 
     /**
      * Set up content for playback.
+     * Suspend function that waits for service connection before setting content.
      */
-    fun setContent(
+    suspend fun setContent(
         sourceId: String,
         audioUri: String,
         chunks: List<Chunk>,
@@ -108,14 +113,19 @@ class PlaybackController @Inject constructor(
     ) {
         Log.d(TAG, "setContent: sourceId=$sourceId, audioUri=$audioUri, chunks=${chunks.size}")
 
+        // 서비스가 연결될 때까지 대기 (최대 5초)
         if (playbackService == null) {
-            Log.w(TAG, "PlaybackService not connected, binding now...")
+            Log.d(TAG, "Waiting for service connection...")
             bindService()
-            // Wait for service binding (increased delay for slow devices)
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                playbackService?.setContent(sourceId, audioUri, chunks, settings, title, subtitle, artworkUrl)
-            }, 2000)
-            return
+            try {
+                withTimeout(5000) {
+                    isServiceConnected.first { it }
+                }
+                Log.d(TAG, "Service connected successfully")
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Service connection timeout after 5 seconds")
+                return
+            }
         }
 
         playbackService?.setContent(sourceId, audioUri, chunks, settings, title, subtitle, artworkUrl)
@@ -206,5 +216,18 @@ class PlaybackController @Inject constructor(
      */
     fun hasRecordPermission(): Boolean {
         return playbackService?.hasRecordPermission() ?: false
+    }
+
+    /**
+     * BUG-C4 Fix: 진행 중인 녹음/Gap 작업 취소
+     *
+     * 플레이리스트 아이템 전환 시 호출하여 녹음 작업을 정리합니다.
+     * - 녹음 중이면 녹음 중지 및 파일 삭제
+     * - Gap 타이머 취소
+     * - 녹음 재생 중지
+     */
+    suspend fun cancelPendingOperations() {
+        Log.d(TAG, "cancelPendingOperations()")
+        playbackService?.cancelPendingOperations()
     }
 }

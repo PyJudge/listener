@@ -31,6 +31,10 @@ class LearningStateMachine @Inject constructor() {
     // 일시정지 시 재생 위치 저장 (ms)
     private var pausedPositionMs: Long = 0L
 
+    // B1: Gap 중 일시정지 시 남은 Gap 시간 (ms)
+    private var pausedGapTimeMs: Long = 0L
+    private var wasInGapState: Boolean = false
+
     // 현재 chunk 인덱스
     private var currentChunkIndex: Int = 0
 
@@ -124,6 +128,41 @@ class LearningStateMachine @Inject constructor() {
             setState(previousState)
         }
         return pausedPositionMs
+    }
+
+    /**
+     * B1: Gap 중 일시정지 (남은 Gap 시간 저장)
+     * @param remainingGapTimeMs 남은 Gap 시간 (ms)
+     */
+    fun pauseWithGapTime(remainingGapTimeMs: Long) {
+        previousState = _state.value
+        wasInGapState = isGapState(previousState)
+        pausedGapTimeMs = if (wasInGapState) remainingGapTimeMs else 0L
+        pausedPositionMs = 0L  // Gap 상태에서는 position 불필요
+        setState(LearningState.Paused)
+    }
+
+    /**
+     * B1: Gap 정보와 함께 재개
+     * @return 재개 정보 (Gap 여부, 남은 시간)
+     */
+    fun resumeWithGapInfo(): ResumeResult {
+        if (_state.value != LearningState.Paused) {
+            return ResumeResult(wasInGap = false, remainingGapTimeMs = 0L)
+        }
+
+        setState(previousState)
+        return ResumeResult(
+            wasInGap = wasInGapState,
+            remainingGapTimeMs = if (wasInGapState) pausedGapTimeMs else 0L
+        )
+    }
+
+    /**
+     * Gap 상태인지 확인
+     */
+    private fun isGapState(state: LearningState): Boolean {
+        return state == LearningState.Gap || state == LearningState.GapWithRecording
     }
 
     fun stop() {
@@ -262,3 +301,13 @@ sealed class TransitionResult {
     data object SkipRecordingPlayback : TransitionResult() // 녹음 실패 시 녹음 재생 건너뜀
     data object SwitchToLRMode : TransitionResult() // 녹음 실패 시 LRLR → LR 모드 전환
 }
+
+/**
+ * B1: 재개 결과 정보
+ * @param wasInGap Gap 상태에서 일시정지되었는지 여부
+ * @param remainingGapTimeMs 남은 Gap 시간 (ms)
+ */
+data class ResumeResult(
+    val wasInGap: Boolean,
+    val remainingGapTimeMs: Long
+)

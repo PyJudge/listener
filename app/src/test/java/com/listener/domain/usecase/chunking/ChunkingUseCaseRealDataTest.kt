@@ -3,6 +3,8 @@ package com.listener.domain.usecase.chunking
 import com.listener.domain.model.Segment
 import com.listener.domain.model.WhisperResult
 import com.listener.domain.model.Word
+import com.listener.domain.usecase.chunking.aligner.TwoPointerAligner
+import com.listener.domain.usecase.chunking.aligner.TimestampAssigner
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import org.junit.Assert.*
@@ -34,9 +36,10 @@ class ChunkingUseCaseRealDataTest {
     fun setup() {
         chunkingUseCase = ChunkingUseCase(
             SentenceSplitter(),
-            TimestampMatcher(),
             ChunkMerger(),
-            DuplicateRemover()
+            DuplicateRemover(),
+            TwoPointerAligner(),
+            TimestampAssigner()
         )
 
         // 실제 데이터 로드 (테스트 리소스에서)
@@ -360,7 +363,7 @@ class ChunkingUseCaseRealDataTest {
         assertTrue(
             "DRIFT at chunks $testStart-${testEnd-1}! ${mismatches.size} mismatches:\n" +
                 mismatches.take(10).joinToString("\n"),
-            mismatches.size <= 2 // 최대 2개 오차 허용 (병합으로 인한 미세 차이)
+            mismatches.size <= 2 // 최대 2개 오차 허용 (5%)
         )
     }
 

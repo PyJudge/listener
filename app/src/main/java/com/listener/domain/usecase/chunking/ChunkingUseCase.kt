@@ -2,118 +2,250 @@ package com.listener.domain.usecase.chunking
 
 import com.listener.domain.model.Chunk
 import com.listener.domain.model.WhisperResult
+import com.listener.domain.model.Word
+import com.listener.domain.usecase.chunking.aligner.TwoPointerAligner
+import com.listener.domain.usecase.chunking.aligner.AlignOp
+import com.listener.domain.usecase.chunking.aligner.TimestampAssigner
 import javax.inject.Inject
+
+/**
+ * 타임스탬프가 붙은 조각 (내부 사용)
+ */
+private data class TimestampedFragment(
+    val text: String,
+    val startMs: Long,
+    val endMs: Long
+)
 
 class ChunkingUseCase @Inject constructor(
     private val sentenceSplitter: SentenceSplitter,
-    private val timestampMatcher: TimestampMatcher,
     private val chunkMerger: ChunkMerger,
-    private val duplicateRemover: DuplicateRemover
+    private val duplicateRemover: DuplicateRemover,
+    private val aligner: TwoPointerAligner,
+    private val timestampAssigner: TimestampAssigner
 ) {
 
     /**
-     * Whisper 결과를 청크로 분할합니다 (ankigpt 방식).
+     * Whisper 결과를 청크로 분할합니다.
      *
-     * 알고리즘:
-     * 1. 전체 세그먼트 텍스트를 합쳐서 한번에 처리
-     * 2. 문장별로 검색 범위 제한 (wordIdx + wordCount * 3 + 100)
-     * 3. 시간 검증으로 역방향 매칭 방지
-     * 4. Fallback: 세그먼트 타임스탬프 대신 단어 배열에서 계산
+     * 2단계 파이프라인 알고리즘:
+     * 1단계: 세그먼트별 타임스탬프 매칭 → 타임스탬프가 붙은 조각 생성
+     * 2단계: 조각 병합하여 완전한 문장(Chunk) 생성
      */
     fun process(
         whisperResult: WhisperResult,
         sentenceOnly: Boolean = true,
         minChunkMs: Long = 1200L
     ): List<Chunk> {
-        val words = duplicateRemover.removeDuplicates(whisperResult.words)
+        val allWords = duplicateRemover.removeDuplicates(whisperResult.words)
         val segments = whisperResult.segments
 
         if (segments.isEmpty()) return emptyList()
 
-        // 1. 전체 세그먼트 텍스트 합치기
-        val fullText = segments.joinToString(" ") { it.text.trim() }
+        // ===== 1단계: 세그먼트별 타임스탬프 매칭 =====
+        val allFragments = mutableListOf<TimestampedFragment>()
 
-        // 2. 문장 분리
-        val sentences = sentenceSplitter.split(fullText, sentenceOnly)
+        for (segment in segments) {
+            // 이 세그먼트 시간 범위 내의 words (0.5초 여유)
+            val segmentWords = allWords.filter {
+                it.start >= segment.start - 0.5 && it.start <= segment.end + 0.5
+            }
 
-        if (sentences.isEmpty()) return emptyList()
-        if (words.isEmpty()) {
-            // 단어 타임스탬프 없으면 세그먼트 타임스탬프 사용
-            val segmentStart = segments.first().start
-            val segmentEnd = segments.last().end
-            return sentences.mapIndexed { index, sentence ->
-                Chunk(
-                    orderIndex = index,
-                    startMs = (segmentStart * 1000).toLong(),
-                    endMs = (segmentEnd * 1000).toLong(),
-                    displayText = sentence
+            // 이 세그먼트의 조각들 (sentenceOnly=true로 문장 경계에서만 분리)
+            val pieces = sentenceSplitter.split(segment.text.trim(), sentenceOnly)
+            if (pieces.isEmpty()) continue
+
+            if (segmentWords.isEmpty()) {
+                // 단어 없으면 세그먼트 타임스탬프 사용
+                for (piece in pieces) {
+                    allFragments.add(
+                        TimestampedFragment(
+                            text = piece,
+                            startMs = (segment.start * 1000).toLong(),
+                            endMs = (segment.end * 1000).toLong()
+                        )
+                    )
+                }
+                continue
+            }
+
+            // 세그먼트 내에서 word 커서
+            var localWordCursor = 0
+
+            for (piece in pieces) {
+                val phrases = piece.split(Regex("\\s+")).filter { it.isNotEmpty() }
+                if (phrases.isEmpty()) continue
+
+                if (localWordCursor >= segmentWords.size) {
+                    // 남은 단어 없으면 마지막 단어 시간 사용
+                    val lastWord = segmentWords.last()
+                    allFragments.add(
+                        TimestampedFragment(
+                            text = piece,
+                            startMs = (lastWord.start * 1000).toLong(),
+                            endMs = (lastWord.end * 1000).toLong()
+                        )
+                    )
+                    continue
+                }
+
+                // 첫 2개 단어로 정확한 위치 찾기
+                val firstPhraseNorm = aligner.normalize(phrases.first())
+                val secondPhraseNorm = if (phrases.size > 1) aligner.normalize(phrases[1]) else null
+
+                val exactIdx = findMatchingWordPairInSegment(
+                    segmentWords, localWordCursor, firstPhraseNorm, secondPhraseNorm
                 )
+                val matchStartIdx = exactIdx ?: localWordCursor
+
+                // 윈도우 설정
+                val windowEnd = minOf(matchStartIdx + phrases.size * 2 + 10, segmentWords.size)
+                val windowWords = segmentWords.subList(matchStartIdx, windowEnd)
+
+                // 정렬 실행
+                val alignResults = aligner.align(phrases, windowWords)
+                val matchedCount = alignResults.count { it.op == AlignOp.MATCH }
+
+                // 타임스탬프 결정
+                val startMs: Long
+                var endMs: Long
+
+                val lastMatchedRelativeIdx = alignResults
+                    .filter { it.op == AlignOp.MATCH && it.wordIdx != null }
+                    .maxByOrNull { it.wordIdx!! }
+                    ?.wordIdx
+
+                if (exactIdx != null) {
+                    startMs = (segmentWords[exactIdx].start * 1000).toLong()
+                    endMs = if (lastMatchedRelativeIdx != null && lastMatchedRelativeIdx < windowWords.size) {
+                        (windowWords[lastMatchedRelativeIdx].end * 1000).toLong()
+                    } else {
+                        val fallbackIdx = minOf(phrases.size - 1, windowWords.size - 1)
+                        (windowWords[fallbackIdx].end * 1000).toLong()
+                    }
+                } else if (windowWords.isNotEmpty()) {
+                    startMs = (windowWords.first().start * 1000).toLong()
+                    endMs = if (lastMatchedRelativeIdx != null && lastMatchedRelativeIdx < windowWords.size) {
+                        (windowWords[lastMatchedRelativeIdx].end * 1000).toLong()
+                    } else {
+                        val fallbackIdx = minOf(phrases.size - 1, windowWords.size - 1)
+                        (windowWords[fallbackIdx].end * 1000).toLong()
+                    }
+                } else {
+                    val lastWord = segmentWords.last()
+                    startMs = (lastWord.start * 1000).toLong()
+                    endMs = (lastWord.end * 1000).toLong()
+                }
+
+                if (endMs <= startMs) {
+                    endMs = startMs + 500
+                }
+
+                allFragments.add(
+                    TimestampedFragment(
+                        text = piece,
+                        startMs = startMs,
+                        endMs = endMs
+                    )
+                )
+
+                // 커서 전진
+                val minAdvance = maxOf(1, phrases.size / 2)
+                localWordCursor = matchStartIdx + maxOf(minAdvance, matchedCount)
             }
         }
 
-        // 3. 각 문장에 타임스탬프 매칭 (첫 단어 강제 동기화 방식)
+        // ===== 2단계: 조각 병합하여 Chunk 생성 =====
         val rawChunks = mutableListOf<Chunk>()
-        var wordIdx = 0
-        var prevEndMs = 0L  // 시간순 보장용
+        val buffer = StringBuilder()
+        var chunkStartMs = 0L
+        var chunkEndMs = 0L
+        var chunkIndex = 0
 
-        for ((index, sentence) in sentences.withIndex()) {
-            // [FIX] words 소진 시 루프 종료 - 중복 청크 방지
-            if (wordIdx >= words.size) break
-
-            val sentenceWords = sentence.split(Regex("\\s+")).filter { it.isNotEmpty() }
-            val wordCount = sentenceWords.size
-
-            // 검색 범위 제한
-            val maxSearch = minOf(wordIdx + wordCount * 3 + 100, words.size)
-
-            // [핵심] 첫 단어 강제 동기화: 문장의 첫 단어를 words에서 직접 찾음
-            // 드리프트 방지 - 이전 청크 오차가 누적되지 않음
-            val foundStartIdx = timestampMatcher.findStartIndex(
-                sentenceWords = sentenceWords,
-                allWords = words,
-                searchStartIndex = wordIdx,
-                maxSearchIndex = maxSearch
-            )
-
-            // 시작 인덱스: 찾으면 그 위치, 못 찾으면 현재 wordIdx 사용
-            val startWordIdx = foundStartIdx ?: wordIdx
-
-            // 마지막 N개 단어로 매칭하여 끝 인덱스 찾기
-            val matchResult = timestampMatcher.findEndTimestamp(
-                sentenceWords = sentenceWords,
-                allWords = words,
-                startWordIndex = startWordIdx,
-                maxSearchIndex = maxSearch,
-                sentenceStartTime = words.getOrNull(startWordIdx)?.start ?: 0.0
-            )
-
-            // 끝 인덱스 결정 (newWordIdx는 다음 chunk의 시작이므로 -1)
-            val endWordIdx = if (matchResult != null) {
-                matchResult.second - 1
-            } else {
-                // Fallback: 단어 수만큼 전진
-                minOf(startWordIdx + wordCount - 1, words.size - 1).coerceAtLeast(startWordIdx)
+        for (frag in allFragments) {
+            if (buffer.isEmpty()) {
+                chunkStartMs = frag.startMs
             }
+            if (buffer.isNotEmpty()) buffer.append(" ")
+            buffer.append(frag.text)
+            chunkEndMs = frag.endMs
 
-            // 다음 chunk의 시작 인덱스
-            wordIdx = endWordIdx + 1
+            // 구분자로 끝나면 Chunk 완성
+            if (frag.text.endsWithDelimiter()) {
+                rawChunks.add(
+                    Chunk(
+                        orderIndex = chunkIndex++,
+                        startMs = chunkStartMs,
+                        endMs = chunkEndMs,
+                        displayText = buffer.toString()
+                    )
+                )
+                buffer.clear()
+            }
+        }
 
-            // 타임스탬프는 words에서, displayText는 원본 sentence에서
-            // Whisper가 겹치는 타임스탬프를 출력할 수 있으므로 시간순 보장
-            val startMs = maxOf((words[startWordIdx].start * 1000).toLong(), prevEndMs)
-            val endMs = maxOf((words[endWordIdx].end * 1000).toLong(), startMs)
-            prevEndMs = endMs
-
+        // 마지막 남은 조각
+        if (buffer.isNotEmpty()) {
             rawChunks.add(
                 Chunk(
-                    orderIndex = index,
-                    startMs = startMs,
-                    endMs = endMs,
-                    displayText = sentence  // 원본 sentence 사용 (구두점 보존)
+                    orderIndex = chunkIndex++,
+                    startMs = chunkStartMs,
+                    endMs = chunkEndMs,
+                    displayText = buffer.toString()
                 )
             )
+        }
+
+        // Post-processing: endMs 조정 (다음 chunk와 겹치지 않도록)
+        for (i in 0 until rawChunks.size - 1) {
+            val current = rawChunks[i]
+            val next = rawChunks[i + 1]
+            if (current.endMs > next.startMs) {
+                rawChunks[i] = current.copy(endMs = next.startMs)
+            }
         }
 
         return chunkMerger.merge(rawChunks, minChunkMs)
     }
+
+    /**
+     * 문자열이 문장 구분자로 끝나는지 확인
+     */
+    private fun String.endsWithDelimiter(): Boolean {
+        val trimmed = this.trimEnd()
+        return trimmed.endsWith('.') || trimmed.endsWith('?') || trimmed.endsWith('!')
+    }
+
+    /**
+     * 세그먼트 내에서 첫 2개 단어가 연속으로 매칭되는 위치를 찾습니다.
+     */
+    private fun findMatchingWordPairInSegment(
+        words: List<Word>,
+        startIdx: Int,
+        firstNorm: String,
+        secondNorm: String?
+    ): Int? {
+        // 세그먼트 내 검색 (startIdx부터)
+        for (i in startIdx until words.size) {
+            if (aligner.normalize(words[i].word) != firstNorm) continue
+
+            if (secondNorm == null) return i
+
+            // 두 번째 단어 확인
+            for (j in i + 1..minOf(i + 3, words.size - 1)) {
+                if (aligner.normalize(words[j].word) == secondNorm) {
+                    return i
+                }
+            }
+        }
+
+        // 2단어 매칭 실패 시 첫 단어만으로
+        for (i in startIdx until words.size) {
+            if (aligner.normalize(words[i].word) == firstNorm) {
+                return i
+            }
+        }
+        return null
+    }
+
 }

@@ -6,6 +6,26 @@ import javax.inject.Inject
 class TimestampMatcher @Inject constructor() {
 
     /**
+     * 주어진 시간 이후 첫 번째 word index를 찾습니다.
+     * 시간 기반 검색으로 드리프트 방지.
+     *
+     * @param words 단어 배열
+     * @param timeMs 검색 시작 시간 (밀리초)
+     * @return 해당 시간 이후 첫 번째 단어의 인덱스
+     */
+    fun findIndexAfterTime(words: List<Word>, timeMs: Long): Int {
+        if (words.isEmpty()) return 0
+        val timeSec = timeMs / 1000.0
+
+        for (i in words.indices) {
+            if (words[i].start >= timeSec) {
+                return i
+            }
+        }
+        return words.size - 1
+    }
+
+    /**
      * 문장의 시작 위치를 찾습니다. (첫 단어 강제 동기화)
      *
      * 핵심 불변조건: Chunk의 displayText 첫 단어 == startMs 위치의 단어

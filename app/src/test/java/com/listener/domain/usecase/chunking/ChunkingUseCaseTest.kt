@@ -3,6 +3,8 @@ package com.listener.domain.usecase.chunking
 import com.listener.domain.model.Segment
 import com.listener.domain.model.WhisperResult
 import com.listener.domain.model.Word
+import com.listener.domain.usecase.chunking.aligner.TwoPointerAligner
+import com.listener.domain.usecase.chunking.aligner.TimestampAssigner
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -19,21 +21,24 @@ class ChunkingUseCaseTest {
 
     private lateinit var chunkingUseCase: ChunkingUseCase
     private lateinit var sentenceSplitter: SentenceSplitter
-    private lateinit var timestampMatcher: TimestampMatcher
     private lateinit var chunkMerger: ChunkMerger
     private lateinit var duplicateRemover: DuplicateRemover
+    private lateinit var aligner: TwoPointerAligner
+    private lateinit var timestampAssigner: TimestampAssigner
 
     @Before
     fun setup() {
         sentenceSplitter = SentenceSplitter()
-        timestampMatcher = TimestampMatcher()
         chunkMerger = ChunkMerger()
         duplicateRemover = DuplicateRemover()
+        aligner = TwoPointerAligner()
+        timestampAssigner = TimestampAssigner()
         chunkingUseCase = ChunkingUseCase(
             sentenceSplitter,
-            timestampMatcher,
             chunkMerger,
-            duplicateRemover
+            duplicateRemover,
+            aligner,
+            timestampAssigner
         )
     }
 
@@ -57,6 +62,9 @@ class ChunkingUseCaseTest {
         )
 
         val chunks = chunkingUseCase.process(whisperResult, minChunkMs = 0)
+
+        println("DEBUG: chunk count = ${chunks.size}")
+        chunks.forEach { println("  ${it.displayText} @ ${it.startMs}-${it.endMs}ms") }
 
         assertEquals(2, chunks.size)
         assertEquals("Hello world.", chunks[0].displayText)

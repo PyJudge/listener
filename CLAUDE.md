@@ -77,6 +77,43 @@ adb exec-out screencap -p > screenshot.png
 
 ---
 
+## 디버깅 (로그 확인)
+
+```bash
+# 연결된 디바이스 목록 확인
+adb devices -l
+
+# 특정 디바이스 로그 확인 (여러 디바이스 연결 시)
+adb -s <device_id> logcat -d | grep -E "PlayerViewModel|PlaybackController|PlaybackService" | tail -100
+
+# 앱 관련 로그만 필터링
+adb logcat -d | grep "com.listener" | tail -100
+
+# 앱 태그로 필터링
+adb logcat -d | grep -E "PlayerViewModel|PlaybackController|PlaybackService|Chunking" | tail -100
+
+# 에러 로그만 확인
+adb logcat -d | grep -E "AndroidRuntime|FATAL|Exception" | grep -i "listener" | tail -50
+
+# 실시간 로그 모니터링
+adb logcat | grep -E "PlayerViewModel|PlaybackController|PlaybackService"
+
+# 로그 버퍼 클리어 후 새로 확인
+adb logcat -c && adb logcat | grep -E "PlayerViewModel|PlaybackController"
+```
+
+### 주요 로그 태그
+
+| 태그 | 파일 |
+|------|------|
+| `PlayerViewModel` | `presentation/player/PlayerViewModel.kt` |
+| `PlaybackController` | `service/PlaybackController.kt` |
+| `PlaybackService` | `service/PlaybackService.kt` |
+| `FFmpegPreprocess` | `domain/usecase/FFmpegPreprocessUseCase.kt` |
+| `RechunkOnStartup` | `service/RechunkOnStartupManager.kt` |
+
+---
+
 ## 에뮬레이터 배포 규칙
 
 **중요: 코드 변경 후 항상 에뮬레이터에 배포하여 검증할 것**
@@ -316,6 +353,77 @@ sqlite3 /tmp/db.db "SELECT MAX(endMs-startMs)/1000.0 as maxSec FROM chunks"
 - [ ] 실기기 캐시 삭제 후 새로 전사
 - [ ] 최소 3개 청크 재생하며 싱크 확인
 - [ ] 최대 청크 길이 30초 이하 확인
+
+---
+
+## 영역별 세부 지침 (위임)
+
+**중요: 각 영역 수정 시 해당 폴더의 CLAUDE.md를 반드시 참조**
+
+| 영역 | 세부 지침 | 핵심 위험 |
+|------|----------|----------|
+| **Chunking 알고리즘** | `domain/usecase/chunking/CLAUDE.md` | 드리프트, 동기화 |
+| **재생 서비스** | `service/CLAUDE.md` | 레이스 컨디션, 상태 동기화 |
+| **데이터 계층** | `data/CLAUDE.md` | 고아 데이터, 트랜잭션 |
+| **UI/Presentation** | `presentation/CLAUDE.md` | 상태 관리, 네비게이션 |
+
+---
+
+## 알려진 주요 문제점 (2026-01 분석)
+
+### CRITICAL (즉시 해결 필요)
+
+| 문제 | 영역 | 영향 |
+|------|------|------|
+| recordingJob 경합 | PlaybackService | 청크 전환 시 잘못된 녹음 저장 |
+| cleartext 트래픽 허용 | AndroidManifest | RSS 피드 MITM 공격 가능 |
+| API 키 평문 저장 | SettingsRepository | 루팅 기기에서 키 탈취 |
+
+### HIGH (우선 해결)
+
+| 문제 | 영역 | 영향 |
+|------|------|------|
+| Orphaned PlaylistItem | 데이터 계층 | 삭제된 에피소드 참조 |
+| PlayerViewModel 재주입 | MainScreen | 재생 상태 유실 |
+| 반복 단어 드리프트 | Chunking | 잘못된 타임스탬프 매칭 |
+| saveChunks 트랜잭션 부재 | TranscriptionRepository | 동시 접근 시 0 chunks |
+
+---
+
+## 보안 체크리스트
+
+**AndroidManifest.xml 수정 필요:**
+```xml
+<!-- 변경 전 -->
+android:usesCleartextTraffic="true"
+android:allowBackup="true"
+
+<!-- 변경 후 -->
+android:usesCleartextTraffic="false"
+android:allowBackup="false"
+```
+
+**API 키 보안:**
+- BuildConfig에서 API 키 제거 필요
+- EncryptedSharedPreferences 도입 검토
+
+---
+
+## 테스트 커버리지 현황
+
+| 영역 | 커버리지 | 상태 |
+|------|---------|------|
+| Chunking 알고리즘 | 95% | ✅ 우수 |
+| LearningStateMachine | 90% | ✅ 우수 |
+| ViewModel | 70% | ⚠️ 보통 |
+| PlaybackService | 40% | ❌ 부족 |
+| API/Network | 0% | ❌ 없음 |
+
+**누락된 테스트 (추가 필요):**
+- PlaybackService 통합 테스트
+- API 응답 파싱 테스트
+- Recording 기능 테스트
+- Database 동시성 테스트
 
 ---
 

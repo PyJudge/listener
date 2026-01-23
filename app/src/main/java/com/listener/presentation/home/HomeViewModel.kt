@@ -14,6 +14,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -51,43 +52,36 @@ class HomeViewModel @Inject constructor(
     }
 
     private fun loadData() {
-        viewModelScope.launch {
-            // Observe recent learnings
-            recentLearningDao.getRecentLearnings(5).collect { learnings ->
-                _uiState.update { it.copy(recentLearnings = learnings) }
-            }
-        }
+        val threeDaysAgo = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
 
         viewModelScope.launch {
-            // Observe new episodes (within 3 days, unplayed)
-            val threeDaysAgo = System.currentTimeMillis() - (3 * 24 * 60 * 60 * 1000L)
-            podcastDao.getNewEpisodes(threeDaysAgo, 10).collect { episodes ->
-                _uiState.update { it.copy(newEpisodes = episodes, isLoading = false) }
-            }
-        }
+            // Combine all data sources into a single state update
+            combine(
+                recentLearningDao.getRecentLearnings(5),
+                podcastDao.getNewEpisodes(threeDaysAgo, 10),
+                podcastDao.getAllSubscriptions(),
+                playlistDao.getAllPlaylists()
+            ) { learnings, episodes, subscriptions, playlists ->
+                // Build podcast name map
+                val nameMap = subscriptions.associate { it.feedUrl to it.title }
 
-        viewModelScope.launch {
-            // Check if has subscriptions and build podcast name map
-            podcastDao.getAllSubscriptions().collect { subs ->
-                val nameMap = subs.associate { it.feedUrl to it.title }
-                _uiState.update {
-                    it.copy(
-                        hasSubscriptions = subs.isNotEmpty(),
-                        podcastNames = nameMap
-                    )
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            // Observe playlists for add to playlist dialog
-            playlistDao.getAllPlaylists().collect { playlists ->
+                // Calculate playlist item counts
                 val itemCounts = playlists.associate { playlist ->
                     playlist.id to playlistDao.getPlaylistItemsList(playlist.id).size
                 }
-                _uiState.update {
-                    it.copy(playlists = playlists, playlistItemCounts = itemCounts)
-                }
+
+                HomeUiState(
+                    recentLearnings = learnings,
+                    newEpisodes = episodes,
+                    playlists = playlists,
+                    playlistItemCounts = itemCounts,
+                    podcastNames = nameMap,
+                    isLoading = false,
+                    hasSubscriptions = subscriptions.isNotEmpty(),
+                    showCreatePlaylistDialog = _uiState.value.showCreatePlaylistDialog
+                )
+            }.collect { newState ->
+                _uiState.value = newState
             }
         }
     }

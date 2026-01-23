@@ -369,4 +369,63 @@ class SentenceSplitterTest {
         assertEquals(1, result.size)
         assertEquals("If you'd like to try 8sleep, go to 8sleep.com slash Huberman to get up to 350 off.", result[0])
     }
+
+    // ===== 소수점 숫자 테스트 =====
+
+    @Test
+    fun `do not split on decimal number 4_9`() {
+        val result = splitter.split("Rating of 4.9 out of 5 stars.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Rating of 4.9 out of 5 stars.", result[0])
+    }
+
+    @Test
+    fun `do not split on decimal number 1_7`() {
+        val result = splitter.split("Based on 1.7 million reviews.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Based on 1.7 million reviews.", result[0])
+    }
+
+    @Test
+    fun `do not split on decimal number 2_5`() {
+        val result = splitter.split("Over the last 2.5 million years.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("Over the last 2.5 million years.", result[0])
+    }
+
+    @Test
+    fun `do not split on percentage decimal`() {
+        val result = splitter.split("You can get 10.5 percent off.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("You can get 10.5 percent off.", result[0])
+    }
+
+    @Test
+    fun `handle decimal at end of sentence`() {
+        val result = splitter.split("The score was 4.9. Great job.", sentenceOnly = true)
+        assertEquals(2, result.size)
+        assertEquals("The score was 4.9.", result[0])
+        assertEquals("Great job.", result[1])
+    }
+
+    @Test
+    fun `handle multiple decimals in sentence`() {
+        val result = splitter.split("It went from 2.5 to 4.9 in one year.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("It went from 2.5 to 4.9 in one year.", result[0])
+    }
+
+    @Test
+    fun `real podcast example - rating`() {
+        val result = splitter.split("It works with an average rating of 4.9 out of 5 for a live session based on over 1.7 million client reviews.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("It works with an average rating of 4.9 out of 5 for a live session based on over 1.7 million client reviews.", result[0])
+    }
+
+    @Test
+    fun `real podcast example - evolution`() {
+        val result = splitter.split("There is this protective function of our brains that has evolved over the last 2.5 million years.", sentenceOnly = true)
+        assertEquals(1, result.size)
+        assertEquals("There is this protective function of our brains that has evolved over the last 2.5 million years.", result[0])
+    }
 }

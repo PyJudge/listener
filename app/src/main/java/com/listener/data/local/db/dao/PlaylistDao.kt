@@ -34,7 +34,7 @@ interface PlaylistDao {
     suspend fun getPlaylistItemsList(playlistId: Long): List<PlaylistItemEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertPlaylistItem(item: PlaylistItemEntity)
+    suspend fun insertPlaylistItem(item: PlaylistItemEntity): Long
 
     @Delete
     suspend fun deletePlaylistItem(item: PlaylistItemEntity)
@@ -46,10 +46,18 @@ interface PlaylistDao {
     suspend fun getMaxOrderIndex(playlistId: Long): Int?
 
     @Query("""
-        SELECT COALESCE(SUM(pe.durationMs), 0)
-        FROM playlist_items pi
-        LEFT JOIN podcast_episodes pe ON pi.sourceId = pe.id
-        WHERE pi.playlistId = :playlistId
+        SELECT COALESCE(SUM(duration), 0)
+        FROM (
+            SELECT pe.durationMs as duration
+            FROM playlist_items pi
+            INNER JOIN podcast_episodes pe ON pi.sourceId = pe.id
+            WHERE pi.playlistId = :playlistId AND pi.sourceType = 'PODCAST_EPISODE'
+            UNION ALL
+            SELECT laf.durationMs as duration
+            FROM playlist_items pi
+            INNER JOIN local_audio_files laf ON pi.sourceId = laf.contentHash
+            WHERE pi.playlistId = :playlistId AND pi.sourceType = 'LOCAL_FILE'
+        )
     """)
     suspend fun getPlaylistTotalDuration(playlistId: Long): Long
 

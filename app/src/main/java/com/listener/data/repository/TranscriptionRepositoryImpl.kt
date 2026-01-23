@@ -45,6 +45,8 @@ import java.io.File
 import java.security.MessageDigest
 import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
+import androidx.room.withTransaction
+import com.listener.data.local.db.ListenerDatabase
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,6 +54,7 @@ import javax.inject.Singleton
 @Singleton
 class TranscriptionRepositoryImpl @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val database: ListenerDatabase,
     private val transcriptionDao: TranscriptionDao,
     private val chunkSettingsDao: ChunkSettingsDao,
     private val localFileDao: LocalFileDao,
@@ -501,8 +504,12 @@ class TranscriptionRepositoryImpl @Inject constructor(
                 displayText = chunk.displayText
             )
         }
-        transcriptionDao.deleteChunks(sourceId)
-        transcriptionDao.insertChunks(entities)
+        // Use transaction to ensure atomicity - concurrent readers will either see
+        // all old chunks or all new chunks, but never an empty list
+        database.withTransaction {
+            transcriptionDao.deleteChunks(sourceId)
+            transcriptionDao.insertChunks(entities)
+        }
     }
 
     override suspend fun deleteChunks(sourceId: String) {

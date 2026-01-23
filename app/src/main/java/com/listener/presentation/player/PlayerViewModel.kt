@@ -16,9 +16,13 @@ import com.listener.domain.repository.TranscriptionRepository
 import com.listener.data.repository.SettingsRepository
 import com.listener.service.PlaybackController
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -26,6 +30,14 @@ import javax.inject.Inject
 data class PlayerUiState(
     val error: String? = null
 )
+
+/**
+ * D2: 네비게이션 이벤트 (전사 미완료 시 TranscriptionScreen으로 이동)
+ */
+sealed class PlayerNavigationEvent {
+    data object None : PlayerNavigationEvent()
+    data class NavigateToTranscription(val sourceId: String) : PlayerNavigationEvent()
+}
 
 @HiltViewModel
 class PlayerViewModel @Inject constructor(
@@ -37,6 +49,12 @@ class PlayerViewModel @Inject constructor(
     private val playbackController: PlaybackController,
     private val settingsRepository: SettingsRepository
 ) : ViewModel() {
+
+    private sealed class NavigationAction {
+        data object Next : NavigationAction()
+        data object Previous : NavigationAction()
+        data class SeekTo(val index: Int) : NavigationAction()
+    }
 
     companion object {
         private const val TAG = "PlayerViewModel"
@@ -65,11 +83,31 @@ class PlayerViewModel @Inject constructor(
     // Track recordings per chunk index
     private val recordings = mutableMapOf<Int, String>()
 
-    // Current content metadata
-    private var currentSourceId: String = ""
-    private var currentTitle: String = ""
-    private var currentSubtitle: String = ""
-    private var currentArtworkUrl: String? = null
+    private val navigationChannel = Channel<NavigationAction>(Channel.UNLIMITED)
+
+    // A1: seekToChunk debounce - 300ms 내 마지막 요청만 처리
+    private var seekJob: Job? = null
+
+    // D2: 네비게이션 이벤트 (전사 미완료 시 TranscriptionScreen으로 이동)
+    private val _navigationEvent = MutableStateFlow<PlayerNavigationEvent>(PlayerNavigationEvent.None)
+    val navigationEvent: StateFlow<PlayerNavigationEvent> = _navigationEvent.asStateFlow()
+
+    // BUG-H1 Fix: Current content metadata as StateFlow for MiniPlayer
+    data class ContentMetadata(
+        val sourceId: String = "",
+        val title: String = "",
+        val subtitle: String = "",
+        val artworkUrl: String? = null
+    )
+
+    private val _contentMetadata = MutableStateFlow(ContentMetadata())
+    val contentMetadata: StateFlow<ContentMetadata> = _contentMetadata.asStateFlow()
+
+    // 하위 호환성을 위한 프로퍼티 (기존 코드에서 사용)
+    private val currentSourceId: String get() = _contentMetadata.value.sourceId
+    private val currentTitle: String get() = _contentMetadata.value.title
+    private val currentSubtitle: String get() = _contentMetadata.value.subtitle
+    private val currentArtworkUrl: String? get() = _contentMetadata.value.artworkUrl
 
     init {
         // Bind to PlaybackService when ViewModel is created
@@ -89,6 +127,28 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
+
+        // 네비게이션 큐 - 순차 실행으로 레이스 컨디션 방지
+        // Note: SeekTo는 debounce 패턴 사용 (seekJob)
+        viewModelScope.launch {
+            navigationChannel.consumeAsFlow().collect { action ->
+                when (action) {
+                    is NavigationAction.Next -> playbackController.nextChunk()
+                    is NavigationAction.Previous -> playbackController.previousChunk()
+                    is NavigationAction.SeekTo -> { /* A1: debounce로 직접 처리됨 */ }
+                }
+            }
+        }
+
+        // D1: 플레이리스트 자동 전환 - contentComplete 관찰
+        viewModelScope.launch {
+            playbackController.playbackState.collect { state ->
+                if (state.contentComplete && isInPlaylistMode() && hasNextPlaylistItem()) {
+                    Log.d(TAG, "D1: Auto-advancing to next playlist item")
+                    nextPlaylistItem()
+                }
+            }
+        }
     }
 
     override fun onCleared() {
@@ -105,21 +165,31 @@ class PlayerViewModel @Inject constructor(
     ) {
         Log.d(TAG, "loadContent: sourceId=$sourceId, title=$title")
         viewModelScope.launch {
-            currentSourceId = sourceId
-            currentTitle = title
-            currentSubtitle = subtitle
-            currentArtworkUrl = artworkUrl
+            // BUG-H1 Fix: StateFlow로 메타데이터 업데이트
+            _contentMetadata.value = ContentMetadata(
+                sourceId = sourceId,
+                title = title,
+                subtitle = subtitle,
+                artworkUrl = artworkUrl
+            )
 
             // 앱 시작 시 이미 rechunk되었으므로 단순히 로드만 함
             val loadedChunks = transcriptionRepository.getChunks(sourceId)
             _chunks.value = loadedChunks
             Log.d(TAG, "Loaded ${loadedChunks.size} chunks")
 
+            // D2: 청크가 없으면 TranscriptionScreen으로 이동
+            if (loadedChunks.isEmpty()) {
+                Log.d(TAG, "D2: No chunks found, navigating to TranscriptionScreen")
+                _navigationEvent.value = PlayerNavigationEvent.NavigateToTranscription(sourceId)
+                return@launch
+            }
+
             // Get the audio file path
             val audioFilePath = playbackController.getAudioFilePath(sourceId)
             Log.d(TAG, "Audio file path: $audioFilePath")
 
-            if (audioFilePath != null && loadedChunks.isNotEmpty()) {
+            if (audioFilePath != null) {
                 val currentSettings = playbackState.value.settings
                 playbackController.setContent(
                     sourceId = sourceId,
@@ -131,7 +201,7 @@ class PlayerViewModel @Inject constructor(
                     artworkUrl = artworkUrl
                 )
             } else {
-                Log.e(TAG, "Cannot set content: audioFilePath=$audioFilePath, chunks=${loadedChunks.size}")
+                Log.e(TAG, "Cannot set content: audioFilePath=$audioFilePath")
             }
         }
     }
@@ -224,17 +294,23 @@ class PlayerViewModel @Inject constructor(
 
     fun nextChunk() {
         Log.d(TAG, "nextChunk()")
-        playbackController.nextChunk()
+        navigationChannel.trySend(NavigationAction.Next)
     }
 
     fun previousChunk() {
         Log.d(TAG, "previousChunk()")
-        playbackController.previousChunk()
+        navigationChannel.trySend(NavigationAction.Previous)
     }
 
     fun seekToChunk(index: Int) {
         Log.d(TAG, "seekToChunk($index)")
-        playbackController.seekToChunk(index)
+        // A1: Debounce pattern - 300ms 내 마지막 요청만 처리
+        // seekBar 드래그나 청크 연타 시 최종 위치로만 이동
+        seekJob?.cancel()
+        seekJob = viewModelScope.launch {
+            delay(300)
+            playbackController.seekToChunk(index)
+        }
     }
 
     fun setRepeatCount(count: Int) {
@@ -303,6 +379,13 @@ class PlayerViewModel @Inject constructor(
     }
 
     /**
+     * D2: 네비게이션 이벤트 소비 (UI에서 처리 후 호출)
+     */
+    fun consumeNavigationEvent() {
+        _navigationEvent.value = PlayerNavigationEvent.None
+    }
+
+    /**
      * Start playback with a playlist context.
      * @param playlistId The playlist ID
      * @param startIndex The index of the item to start with (default 0)
@@ -352,8 +435,13 @@ class PlayerViewModel @Inject constructor(
 
     /**
      * Load content for a playlist item based on its source type.
+     *
+     * BUG-C4 Fix: 녹음 중이면 먼저 취소 후 새 아이템 로드
      */
     private suspend fun loadPlaylistItem(item: PlaylistItemEntity) {
+        // BUG-C4 Fix: 진행 중인 녹음/Gap 작업 취소 (고아 파일 방지)
+        playbackController.cancelPendingOperations()
+
         // Clear previous recordings when switching items
         recordings.clear()
 
