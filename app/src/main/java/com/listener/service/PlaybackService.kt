@@ -2,6 +2,9 @@ package com.listener.service
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.util.Log
@@ -10,12 +13,15 @@ import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.listener.MainActivity
 import com.listener.data.local.db.dao.RecentLearningDao
 import com.listener.data.local.db.entity.RecentLearningEntity
 import com.listener.domain.model.Chunk
@@ -119,23 +125,36 @@ class PlaybackService : MediaSessionService() {
         super.onCreate()
         createNotificationChannel()
 
-        // C1: 오디오 포커스 설정 (ExoPlayer Best Practice)
-        // https://medium.com/google-exoplayer/easy-audio-focus-with-exoplayer-a2dcbbe4640e
+        // 1. NotificationProvider 먼저 설정 (MediaSession 전에!)
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(CHANNEL_ID)
+                .setNotificationId(NOTIFICATION_ID)
+                .build()
+        )
+
+        // 2. 오디오 포커스 설정 (ExoPlayer Best Practice)
         val audioAttributes = AudioAttributes.Builder()
-            .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)  // 학습용 음성 콘텐츠
+            .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
             .setUsage(C.USAGE_MEDIA)
             .build()
 
         player = ExoPlayer.Builder(this)
-            .setAudioAttributes(audioAttributes, true)  // true = 오디오 포커스 자동 관리
-            .setHandleAudioBecomingNoisy(true)          // 이어폰 뽑힘 시 자동 일시정지
+            .setAudioAttributes(audioAttributes, true)
+            .setHandleAudioBecomingNoisy(true)
             .build()
             .apply {
                 addListener(playerListener)
             }
 
-        // C2: MediaSession 콜백 설정 (알림 컨트롤 지원)
+        // 3. PendingIntent + MediaSession
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0,
+            Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_IMMUTABLE
+        )
         mediaSession = MediaSession.Builder(this, player!!)
+            .setSessionActivity(pendingIntent)
             .setCallback(mediaSessionCallback)
             .build()
     }
@@ -218,7 +237,23 @@ class PlaybackService : MediaSessionService() {
             )
         }
 
-        player?.setMediaItem(MediaItem.fromUri(audioUri))
+        // MediaMetadata 포함한 MediaItem 생성 (알림에 제목/아트워크 표시)
+        val mediaMetadata = MediaMetadata.Builder()
+            .setTitle(title.ifEmpty { "Listener" })
+            .setSubtitle(subtitle)
+            .apply {
+                if (!artworkUrl.isNullOrEmpty()) {
+                    setArtworkUri(Uri.parse(artworkUrl))
+                }
+            }
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(audioUri)
+            .setMediaMetadata(mediaMetadata)
+            .build()
+
+        player?.setMediaItem(mediaItem)
         player?.prepare()
     }
 
