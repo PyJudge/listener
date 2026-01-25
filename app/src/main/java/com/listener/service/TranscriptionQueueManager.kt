@@ -6,6 +6,7 @@ import com.listener.data.local.db.dao.PodcastDao
 import com.listener.data.local.db.dao.TranscriptionQueueDao
 import com.listener.data.local.db.entity.TranscriptionQueueEntity
 import com.listener.data.local.db.entity.TranscriptionQueueStatus
+import com.listener.data.repository.SettingsRepository
 import com.listener.domain.repository.TranscriptionRepository
 import com.listener.domain.repository.TranscriptionState
 import com.listener.domain.repository.TranscriptionStep
@@ -15,6 +16,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -49,7 +51,8 @@ class TranscriptionQueueManager @Inject constructor(
     private val transcriptionQueueDao: TranscriptionQueueDao,
     private val transcriptionRepository: TranscriptionRepository,
     private val podcastDao: PodcastDao,
-    private val localFileDao: LocalFileDao
+    private val localFileDao: LocalFileDao,
+    private val settingsRepository: SettingsRepository
 ) {
     companion object {
         private const val TAG = "TranscriptionQueue"
@@ -178,7 +181,8 @@ class TranscriptionQueueManager @Inject constructor(
                     startedAt = System.currentTimeMillis()
                 )
             )
-            transcriptionRepository.startTranscription(nextItem.sourceId)
+            val language = settingsRepository.settings.first().transcriptionLanguage
+            transcriptionRepository.startTranscription(nextItem.sourceId, language)
         } else {
             Log.d(TAG, "Queue empty, nothing to process")
         }

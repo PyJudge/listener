@@ -3,6 +3,7 @@ package com.listener.presentation.transcription
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.listener.data.repository.SettingsRepository
 import com.listener.domain.repository.TranscriptionRepository
 import com.listener.domain.repository.TranscriptionState
 import com.listener.domain.repository.TranscriptionStep
@@ -10,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -42,7 +44,8 @@ data class TranscriptionUiState(
 @HiltViewModel
 class TranscriptionViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val transcriptionRepository: TranscriptionRepository
+    private val transcriptionRepository: TranscriptionRepository,
+    private val settingsRepository: SettingsRepository
 ) : ViewModel() {
 
     val sourceId: String = savedStateHandle.get<String>("sourceId") ?: ""
@@ -61,7 +64,10 @@ class TranscriptionViewModel @Inject constructor(
 
         // 전사 시작 (이미 진행 중이면 Repository가 무시)
         if (sourceId.isNotBlank()) {
-            transcriptionRepository.startTranscription(sourceId)
+            viewModelScope.launch {
+                val language = settingsRepository.settings.first().transcriptionLanguage
+                transcriptionRepository.startTranscription(sourceId, language)
+            }
         }
     }
 
@@ -115,7 +121,10 @@ class TranscriptionViewModel @Inject constructor(
 
     fun retry() {
         _uiState.update { TranscriptionUiState(step = UiTranscriptionStep.IDLE) }
-        transcriptionRepository.startTranscription(sourceId)
+        viewModelScope.launch {
+            val language = settingsRepository.settings.first().transcriptionLanguage
+            transcriptionRepository.startTranscription(sourceId, language)
+        }
     }
 
     fun cancel() {
