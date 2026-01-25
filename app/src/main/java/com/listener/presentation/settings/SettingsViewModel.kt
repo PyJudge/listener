@@ -107,6 +107,12 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setChunkFontSize(size: Int) {
+        viewModelScope.launch {
+            settingsRepository.setChunkFontSize(size)
+        }
+    }
+
     fun setApiKey(key: String) {
         viewModelScope.launch {
             settingsRepository.setOpenAiApiKey(key)

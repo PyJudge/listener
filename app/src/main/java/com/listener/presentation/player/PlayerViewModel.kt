@@ -63,6 +63,9 @@ class PlayerViewModel @Inject constructor(
     // Use playback state from controller
     val playbackState: StateFlow<PlaybackState> = playbackController.playbackState
 
+    // Expose app settings for UI (e.g., chunk font size)
+    val appSettings = settingsRepository.settings
+
     // UI state for errors
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()

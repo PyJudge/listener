@@ -120,6 +120,7 @@ fun FullScreenPlayerScreen(
     val playlistItems by viewModel.playlistItems.collectAsStateWithLifecycle()
     val currentPlaylistItemIndex by viewModel.currentPlaylistItemIndex.collectAsStateWithLifecycle()
     val navigationEvent by viewModel.navigationEvent.collectAsStateWithLifecycle()
+    val appSettings by viewModel.appSettings.collectAsStateWithLifecycle(initialValue = com.listener.data.repository.AppSettings())
 
     // BUG-C3 Fix: Context for Toast
     val context = LocalContext.current
@@ -244,6 +245,7 @@ fun FullScreenPlayerScreen(
                             isBlindMode = isBlindMode,
                             isPeeking = peekingChunkIndex == index,
                             hasRecording = viewModel.hasRecording(index),
+                            fontSize = appSettings.chunkFontSize,
                             onTap = { viewModel.seekToChunk(index) },
                             onPeekStart = { peekingChunkIndex = index },
                             onPeekEnd = { peekingChunkIndex = null },
@@ -417,6 +419,7 @@ private fun ModernChunkItem(
     isBlindMode: Boolean,
     isPeeking: Boolean,
     hasRecording: Boolean,
+    fontSize: Int = 16,
     onTap: () -> Unit,
     onPeekStart: () -> Unit,
     onPeekEnd: () -> Unit,
@@ -485,10 +488,10 @@ private fun ModernChunkItem(
                 } else {
                     Text(
                         text = chunk.displayText,
-                        fontSize = 16.sp,
+                        fontSize = fontSize.sp,
                         fontWeight = if (isCurrent) FontWeight.Medium else FontWeight.Normal,
                         color = if (isCurrent) TextPrimary else TextSecondary,
-                        lineHeight = 24.sp
+                        lineHeight = (fontSize + 8).sp
                     )
                 }
             }

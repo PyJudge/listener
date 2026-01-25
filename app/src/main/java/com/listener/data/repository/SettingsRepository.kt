@@ -29,6 +29,9 @@ data class AppSettings(
     val sentenceOnly: Boolean = true,
     val skipPreprocessingForSmallFiles: Boolean = true,
 
+    // Display
+    val chunkFontSize: Int = 16, // 12~24
+
     // API
     val transcriptionProvider: String = "groq", // "groq" | "openai"
     val openAiApiKey: String = "",
@@ -48,6 +51,7 @@ class SettingsRepository @Inject constructor(
         val MIN_CHUNK_MS = longPreferencesKey("min_chunk_ms")
         val SENTENCE_ONLY = booleanPreferencesKey("sentence_only")
         val SKIP_PREPROCESSING = booleanPreferencesKey("skip_preprocessing_for_small_files")
+        val CHUNK_FONT_SIZE = intPreferencesKey("chunk_font_size")
         val TRANSCRIPTION_PROVIDER = stringPreferencesKey("transcription_provider")
         val OPENAI_API_KEY = stringPreferencesKey("openai_api_key")
         val GROQ_API_KEY = stringPreferencesKey("groq_api_key")
@@ -66,6 +70,7 @@ class SettingsRepository @Inject constructor(
                 minChunkMs = prefs[Keys.MIN_CHUNK_MS] ?: 1200L,
                 sentenceOnly = prefs[Keys.SENTENCE_ONLY] ?: true,
                 skipPreprocessingForSmallFiles = prefs[Keys.SKIP_PREPROCESSING] ?: true,
+                chunkFontSize = prefs[Keys.CHUNK_FONT_SIZE] ?: 16,
                 transcriptionProvider = prefs[Keys.TRANSCRIPTION_PROVIDER] ?: "groq",
                 openAiApiKey = prefs[Keys.OPENAI_API_KEY] ?: "",
                 groqApiKey = prefs[Keys.GROQ_API_KEY] ?: BuildConfig.GROQ_API_KEY
@@ -108,6 +113,10 @@ class SettingsRepository @Inject constructor(
             it[Keys.SENTENCE_ONLY] = enabled
             it[Keys.PENDING_RECHUNK] = true
         }
+    }
+
+    suspend fun setChunkFontSize(size: Int) {
+        dataStore.edit { it[Keys.CHUNK_FONT_SIZE] = size.coerceIn(12, 24) }
     }
 
     suspend fun setOpenAiApiKey(key: String) {

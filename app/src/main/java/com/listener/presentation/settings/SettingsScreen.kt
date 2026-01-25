@@ -166,6 +166,18 @@ fun SettingsScreen(
                 )
             }
 
+            item {
+                SettingsSliderItem(
+                    title = "Chunk Font Size",
+                    subtitle = "청크 텍스트 크기",
+                    value = settings.chunkFontSize.toFloat(),
+                    valueRange = 12f..24f,
+                    steps = 11,
+                    valueLabel = "${settings.chunkFontSize}sp",
+                    onValueChange = { viewModel.setChunkFontSize(it.toInt()) }
+                )
+            }
+
             // Storage Section
             item {
                 SettingsSectionHeader(title = "Storage")
