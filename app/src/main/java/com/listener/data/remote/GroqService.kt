@@ -48,6 +48,7 @@ class GroqService @Inject constructor(
         val segmentPart = "segment".toRequestBody("text/plain".toMediaType())
         val wordPart = "word".toRequestBody("text/plain".toMediaType())
         val languagePart = language?.toRequestBody("text/plain".toMediaType())
+        val promptPart = promptForLanguage(language).toRequestBody("text/plain".toMediaType())
 
         return groqApi.transcribe(
             authorization = "Bearer $apiKey",
@@ -56,7 +57,8 @@ class GroqService @Inject constructor(
             responseFormat = formatPart,
             timestampGranularity1 = segmentPart,
             timestampGranularity2 = wordPart,
-            language = languagePart
+            language = languagePart,
+            prompt = promptPart
         )
     }
 
@@ -64,5 +66,18 @@ class GroqService @Inject constructor(
 
     private suspend fun getApiKey(): String {
         return settingsRepository.settings.first().groqApiKey
+    }
+
+    private fun promptForLanguage(language: String?): String {
+        return when (language) {
+            "en" -> "Hello, welcome to my lecture."
+            "ko" -> "안녕하세요. 강의를 시작하겠습니다."
+            "ja" -> "こんにちは。講義を始めます。"
+            "zh" -> "你好，欢迎来到我的讲座。"
+            "es" -> "Hola, bienvenido a mi conferencia."
+            "fr" -> "Bonjour, bienvenue à ma conférence."
+            "de" -> "Hallo, willkommen zu meinem Vortrag."
+            else -> "Hello."
+        }
     }
 }

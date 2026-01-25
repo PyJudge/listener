@@ -18,6 +18,7 @@ interface OpenAiApi {
         @Part("response_format") responseFormat: RequestBody,
         @Part("timestamp_granularities[]") timestampGranularity1: RequestBody,
         @Part("timestamp_granularities[]") timestampGranularity2: RequestBody,
-        @Part("language") language: RequestBody?
+        @Part("language") language: RequestBody?,
+        @Part("prompt") prompt: RequestBody?
     ): WhisperResponse
 }
